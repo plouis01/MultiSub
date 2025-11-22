@@ -215,12 +215,7 @@ const getSafeAddress = (runtime: Runtime<Config>): string => {
 	}
 
 	const evmClient = new cre.capabilities.EVMClient(network.chainSelector.selector)
-	runtime.log('1')
-	runtime.log(`Network: ${network.chainSelector.selector}`)
-	runtime.log(`Module address: ${runtime.config.moduleAddress}`)
 
-	// First, try to call getTokenBalances to verify contract exists and responds
-	runtime.log('Testing contract with getTokenBalances...')
 	try {
 		const testCallData = encodeFunctionData({
 			abi: DeFiInteractorModule,
@@ -237,7 +232,6 @@ const getSafeAddress = (runtime: Runtime<Config>): string => {
 				blockNumber: LAST_FINALIZED_BLOCK_NUMBER,
 			})
 			.result()
-		runtime.log('Contract responds to getTokenBalances - contract exists!')
 	} catch (testError) {
 		runtime.log(`Contract test failed: ${testError}`)
 	}
@@ -246,8 +240,6 @@ const getSafeAddress = (runtime: Runtime<Config>): string => {
 		abi: DeFiInteractorModule,
 		functionName: 'avatar',
 	})
-	runtime.log('2')
-	runtime.log(`Call data for avatar(): ${callData}`)
 
 	let contractCall
 	try {
@@ -261,7 +253,6 @@ const getSafeAddress = (runtime: Runtime<Config>): string => {
 				blockNumber: LAST_FINALIZED_BLOCK_NUMBER,
 			})
 			.result()
-		runtime.log('3 - avatar() call succeeded')
 	} catch (error) {
 		runtime.log(`Error calling avatar(): ${error}`)
 		runtime.log(`Error details: ${JSON.stringify(error, null, 2)}`)
@@ -273,7 +264,6 @@ const getSafeAddress = (runtime: Runtime<Config>): string => {
 		functionName: 'avatar',
 		data: bytesToHex(contractCall.data),
 	})
-	runtime.log('4')
 
 	return safeAddress
 }
