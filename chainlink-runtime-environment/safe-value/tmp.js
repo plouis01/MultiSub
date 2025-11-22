@@ -16349,14 +16349,23 @@ var getTokenDecimals = (runtime2, tokenAddress, chainSelectorName) => {
     abi: ERC20WithDecimals,
     functionName: "decimals"
   });
-  const contractCall = evmClient.callContract(runtime2, {
-    call: encodeCallMsg({
-      from: zeroAddress,
-      to: tokenAddress,
-      data: callData
-    }),
-    blockNumber: LAST_FINALIZED_BLOCK_NUMBER
-  }).result();
+  let contractCall;
+  try {
+    contractCall = evmClient.callContract(runtime2, {
+      call: encodeCallMsg({
+        from: zeroAddress,
+        to: tokenAddress,
+        data: callData
+      }),
+      blockNumber: LAST_FINALIZED_BLOCK_NUMBER
+    }).result();
+  } catch (error) {
+    runtime2.log(`Error calling decimals() on token ${tokenAddress}: ${error}`);
+    throw new Error(`Failed to get decimals for token ${tokenAddress}: ${error}`);
+  }
+  if (!contractCall.data || contractCall.data.length === 0) {
+    throw new Error(`Empty response when calling decimals() on token ${tokenAddress}`);
+  }
   const decimals = decodeFunctionResult({
     abi: ERC20WithDecimals,
     functionName: "decimals",
@@ -16378,14 +16387,23 @@ var getChainlinkPrice = (runtime2, priceFeedAddress, chainSelectorName) => {
     abi: ChainlinkPriceFeedABI,
     functionName: "latestRoundData"
   });
-  const priceCall = evmClient.callContract(runtime2, {
-    call: encodeCallMsg({
-      from: zeroAddress,
-      to: priceFeedAddress,
-      data: priceCallData
-    }),
-    blockNumber: LAST_FINALIZED_BLOCK_NUMBER
-  }).result();
+  let priceCall;
+  try {
+    priceCall = evmClient.callContract(runtime2, {
+      call: encodeCallMsg({
+        from: zeroAddress,
+        to: priceFeedAddress,
+        data: priceCallData
+      }),
+      blockNumber: LAST_FINALIZED_BLOCK_NUMBER
+    }).result();
+  } catch (error) {
+    runtime2.log(`Error calling latestRoundData() on price feed ${priceFeedAddress}: ${error}`);
+    throw new Error(`Failed to get price from feed ${priceFeedAddress}: ${error}`);
+  }
+  if (!priceCall.data || priceCall.data.length === 0) {
+    throw new Error(`Empty response when calling latestRoundData() on price feed ${priceFeedAddress}`);
+  }
   const [, answer] = decodeFunctionResult({
     abi: ChainlinkPriceFeedABI,
     functionName: "latestRoundData",
@@ -16395,14 +16413,23 @@ var getChainlinkPrice = (runtime2, priceFeedAddress, chainSelectorName) => {
     abi: ChainlinkPriceFeedABI,
     functionName: "decimals"
   });
-  const decimalsCall = evmClient.callContract(runtime2, {
-    call: encodeCallMsg({
-      from: zeroAddress,
-      to: priceFeedAddress,
-      data: decimalsCallData
-    }),
-    blockNumber: LAST_FINALIZED_BLOCK_NUMBER
-  }).result();
+  let decimalsCall;
+  try {
+    decimalsCall = evmClient.callContract(runtime2, {
+      call: encodeCallMsg({
+        from: zeroAddress,
+        to: priceFeedAddress,
+        data: decimalsCallData
+      }),
+      blockNumber: LAST_FINALIZED_BLOCK_NUMBER
+    }).result();
+  } catch (error) {
+    runtime2.log(`Error calling decimals() on price feed ${priceFeedAddress}: ${error}`);
+    throw new Error(`Failed to get decimals from price feed ${priceFeedAddress}: ${error}`);
+  }
+  if (!decimalsCall.data || decimalsCall.data.length === 0) {
+    throw new Error(`Empty response when calling decimals() on price feed ${priceFeedAddress}`);
+  }
   const decimals = decodeFunctionResult({
     abi: ChainlinkPriceFeedABI,
     functionName: "decimals",

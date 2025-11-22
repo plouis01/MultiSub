@@ -13,7 +13,7 @@
     },
     {
       "address": "0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0",
-      "priceFeedAddress": "0x3E7d1eAB13ad0104d2750B8863b489D65364e32D",
+      "priceFeedAddress": "0xA2F78ab2355fe2f984D808B5CeE7FD0A93D5270E",
       "symbol": "USDT",
       "type": "erc20"
     },
