@@ -195,11 +195,37 @@ cast send $SAFE "disableModule(address,address)" $PREV_MODULE $MODULE
 - Emergency pause mechanism
 - Reentrancy guards
 
+## Chainlink Runtime Environment (CRE) Integration
+
+This project now includes a **Chainlink Runtime Environment workflow** that monitors Safe multisig wallet values and stores them on-chain.
+
+### Safe Value Monitor
+
+Located in `chainlink-runtime-environment/`, this CRE workflow:
+- Runs every 30 seconds (configurable)
+- Fetches token balances from a Safe multisig
+- Gets USD prices from Chainlink price feeds
+- Calculates total portfolio value in USD
+- Stores the value on-chain via signed Chainlink reports
+- Enables smart contracts to query Safe values
+
+**Key Files:**
+- `contracts/SafeValueStorage.sol` - On-chain storage contract
+- `safe-value/safe-monitor.ts` - CRE workflow implementation
+- `safe-value/config.safe-monitor.json` - Configuration
+
+**Use Cases:**
+- On-chain collateralization checks
+- Treasury value tracking
+- Automated DeFi integrations based on Safe value
+- Compliance and reporting
+
 ## Resources
 
 - [Zodiac Wiki](https://www.zodiac.wiki/)
 - [Safe Documentation](https://docs.safe.global/)
 - [Foundry Book](https://book.getfoundry.sh/)
+- [Chainlink Documentation](https://docs.chain.link/)
 
 ## License
 
