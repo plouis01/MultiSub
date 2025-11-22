@@ -198,121 +198,38 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
         emit EmergencyUnpaused(msg.sender, block.timestamp);
     }
 
-    // ============ Oracle & Token Management ============
+    // ============ Role Management ============
 
     /**
-     * @notice Set the price oracle (only Safe can call)
-     * @param _oracle The price oracle address
+     * @notice Grant a role to a sub-account (only owner can do this)
+     * @param member The address to grant the role to
+     * @param roleId The role ID to grant
      */
-    function setOracle(address _oracle) external onlySafe {
-        if (_oracle == address(0)) revert InvalidAddress();
-        address oldOracle = address(priceOracle);
-        priceOracle = IPriceOracle(_oracle);
-        emit OracleUpdated(oldOracle, _oracle);
+    function grantRole(address member, uint16 roleId) external onlyOwner {
+        if (member == address(0)) revert InvalidAddress();
+        subAccountRoles[member][roleId] = true;
+        emit RoleAssigned(member, roleId, block.timestamp);
     }
 
     /**
-     * @notice Add a token to track for portfolio valuation (only Safe can call)
-     * @param token The token address to track
+     * @notice Revoke a role from a sub-account (only owner can do this)
+     * @param member The address to revoke the role from
+     * @param roleId The role ID to revoke
      */
-    function addTrackedToken(address token) external onlySafe {
-        if (token == address(0)) revert InvalidAddress();
-        if (!isTrackedToken[token]) {
-            trackedTokens.push(token);
-            isTrackedToken[token] = true;
-            emit TrackedTokenAdded(token);
-        }
+    function revokeRole(address member, uint16 roleId) external onlyOwner {
+        if (member == address(0)) revert InvalidAddress();
+        subAccountRoles[member][roleId] = false;
+        emit RoleRevoked(member, roleId, block.timestamp);
     }
 
     /**
-     * @notice Remove a token from tracking (only Safe can call)
-     * @param token The token address to remove
+     * @notice Check if an address has a specific role
+     * @param member The address to check
+     * @param roleId The role ID to check
+     * @return bool Whether the address has the role
      */
-    function removeTrackedToken(address token) external onlySafe {
-        if (isTrackedToken[token]) {
-            isTrackedToken[token] = false;
-            // Remove from array
-            for (uint256 i = 0; i < trackedTokens.length; i++) {
-                if (trackedTokens[i] == token) {
-                    trackedTokens[i] = trackedTokens[trackedTokens.length - 1];
-                    trackedTokens.pop();
-                    break;
-                }
-            }
-            emit TrackedTokenRemoved(token);
-        }
-    }
-
-    /**
-     * @notice Add a protocol to track for portfolio valuation (only Safe can call)
-     * @param protocol The protocol address to track (e.g., Morpho vault address)
-     */
-    function addTrackedProtocol(address protocol) external onlySafe {
-        if (protocol == address(0)) revert InvalidAddress();
-        if (!isTrackedProtocol[protocol]) {
-            trackedProtocols.push(protocol);
-            isTrackedProtocol[protocol] = true;
-            emit TrackedProtocolAdded(protocol);
-        }
-    }
-
-    /**
-     * @notice Remove a protocol from tracking (only Safe can call)
-     * @param protocol The protocol address to remove
-     */
-    function removeTrackedProtocol(address protocol) external onlySafe {
-        if (isTrackedProtocol[protocol]) {
-            isTrackedProtocol[protocol] = false;
-            // Remove from array
-            for (uint256 i = 0; i < trackedProtocols.length; i++) {
-                if (trackedProtocols[i] == protocol) {
-                    trackedProtocols[i] = trackedProtocols[trackedProtocols.length - 1];
-                    trackedProtocols.pop();
-                    break;
-                }
-            }
-            emit TrackedProtocolRemoved(protocol);
-        }
-    }
-
-    /**
-     * @notice Calculate the total portfolio value of the Safe
-     * @return totalValue The total value in USD (18 decimals)
-     */
-    function getPortfolioValue() public view returns (uint256 totalValue) {
-        if (address(priceOracle) == address(0)) revert OracleNotSet();
-        if (trackedTokens.length == 0 && trackedProtocols.length == 0) revert NoTrackedTokens();
-
-        // Value from token balances (USDC, WETH, etc.)
-        for (uint256 i = 0; i < trackedTokens.length; i++) {
-            address token = trackedTokens[i];
-            uint256 balance = IERC20(token).balanceOf(address(safe));
-            if (balance > 0) {
-                totalValue += priceOracle.getValue(token, balance);
-            }
-        }
-
-        // Value from protocol positions (Morpho vaults, Aave, etc.)
-        for (uint256 i = 0; i < trackedProtocols.length; i++) {
-            address protocol = trackedProtocols[i];
-            totalValue += priceOracle.getPositionValue(protocol, address(safe));
-        }
-    }
-
-    /**
-     * @notice Get the number of tracked tokens
-     * @return count The number of tracked tokens
-     */
-    function getTrackedTokenCount() external view returns (uint256) {
-        return trackedTokens.length;
-    }
-
-    /**
-     * @notice Get the number of tracked protocols
-     * @return count The number of tracked protocols
-     */
-    function getTrackedProtocolCount() external view returns (uint256) {
-        return trackedProtocols.length;
+    function hasRole(address member, uint16 roleId) public view returns (bool) {
+        return subAccountRoles[member][roleId];
     }
 
     // ============ Sub-Account Configuration ============
