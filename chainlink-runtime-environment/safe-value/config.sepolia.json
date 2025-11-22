@@ -1,5 +1,5 @@
 {
-  "schedule": "*/30 * * * * *",
+  "schedule": "*/30 * * * *",
   "moduleAddress": "0x42FBd804C677324c4b711Fce26Ee8226702B389A",
   "chainSelectorName": "ethereum-testnet-sepolia",
   "gasLimit": "500000",
