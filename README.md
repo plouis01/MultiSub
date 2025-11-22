@@ -197,28 +197,46 @@ cast send $SAFE "disableModule(address,address)" $PREV_MODULE $MODULE
 
 ## Chainlink Runtime Environment (CRE) Integration
 
-This project now includes a **Chainlink Runtime Environment workflow** that monitors Safe multisig wallet values and stores them on-chain.
+The **DeFiInteractorModule** includes integrated Safe value monitoring powered by Chainlink Runtime Environment.
 
-### Safe Value Monitor
+### Safe Value Monitoring
 
-Located in `chainlink-runtime-environment/`, this CRE workflow:
+The module automatically tracks and stores the USD value of its associated Safe:
 - Runs every 30 seconds (configurable)
-- Fetches token balances from a Safe multisig
+- Fetches token balances from the Safe
 - Gets USD prices from Chainlink price feeds
 - Calculates total portfolio value in USD
-- Stores the value on-chain via signed Chainlink reports
-- Enables smart contracts to query Safe values
+- Stores value on-chain via signed Chainlink reports
+- Queryable by any smart contract
 
-**Key Files:**
-- `contracts/SafeValueStorage.sol` - On-chain storage contract
-- `safe-value/safe-monitor.ts` - CRE workflow implementation
-- `safe-value/config.safe-monitor.json` - Configuration
+**Key Features:**
+- Single contract deployment (module + value storage)
+- Module knows its Safe via `avatar()` property
+- Authorized Chainlink updater only
+- Staleness checks included
+- Event logging for all updates
+
+**Implementation:**
+- `src/DeFiInteractorModule.sol` - Module with integrated value storage
+- `chainlink-runtime-environment/safe-value/safe-monitor.ts` - CRE workflow
+- `chainlink-runtime-environment/safe-value/config.safe-monitor.json` - Configuration
 
 **Use Cases:**
 - On-chain collateralization checks
 - Treasury value tracking
 - Automated DeFi integrations based on Safe value
 - Compliance and reporting
+
+**Quick Deploy:**
+```bash
+# Deploy module with Chainlink updater
+export SAFE_ADDRESS=0xYourSafe
+export AUTHORIZED_UPDATER=0xChainlinkCREProxy
+forge script script/DeployDeFiModule.s.sol --broadcast
+
+# Query Safe value
+cast call MODULE_ADDRESS "getSafeValue()(uint256,uint256,uint256)"
+```
 
 ## Resources
 
