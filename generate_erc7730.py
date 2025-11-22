@@ -165,7 +165,7 @@ class SolidityParser:
     """Parser for Solidity contract files"""
 
     # Regex patterns
-    CONTRACT_PATTERN = re.compile(r'contract\s+(\w+)')
+    CONTRACT_PATTERN = re.compile(r'contract\s+(\w+)\s+(?:is\s+)?[{\s]')
     FUNCTION_PATTERN = re.compile(
         r'function\s+(\w+)\s*\((.*?)\)\s*(external|public)',
         re.DOTALL
