@@ -41,15 +41,6 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
     /// @notice Authorized updater (Chainlink CRE proxy contract)
     address public authorizedUpdater;
 
-    // /// @notice Price oracle for portfolio valuation
-    // IPriceOracle public priceOracle;
-
-    // /// @notice List of tracked tokens for portfolio valuation
-    // address[] public trackedTokens;
-
-    // /// @notice Mapping to check if protocol is tracked
-    // mapping(address => bool) public isTrackedProtocol;
-
     /// @notice Default maximum percentage of portfolio value loss allowed per window (basis points)
     uint256 public constant DEFAULT_MAX_LOSS_BPS = 500; // 5%
 

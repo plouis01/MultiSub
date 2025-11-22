@@ -16283,10 +16283,6 @@ var getSafeAddress = (runtime2) => {
     throw new Error(`Network not found for chain selector name: ${runtime2.config.chainSelectorName}`);
   }
   const evmClient = new cre.capabilities.EVMClient(network248.chainSelector.selector);
-  runtime2.log("1");
-  runtime2.log(`Network: ${network248.chainSelector.selector}`);
-  runtime2.log(`Module address: ${runtime2.config.moduleAddress}`);
-  runtime2.log("Testing contract with getTokenBalances...");
   try {
     const testCallData = encodeFunctionData({
       abi: DeFiInteractorModule,
@@ -16301,7 +16297,6 @@ var getSafeAddress = (runtime2) => {
       }),
       blockNumber: LAST_FINALIZED_BLOCK_NUMBER
     }).result();
-    runtime2.log("Contract responds to getTokenBalances - contract exists!");
   } catch (testError) {
     runtime2.log(`Contract test failed: ${testError}`);
   }
@@ -16309,8 +16304,6 @@ var getSafeAddress = (runtime2) => {
     abi: DeFiInteractorModule,
     functionName: "avatar"
   });
-  runtime2.log("2");
-  runtime2.log(`Call data for avatar(): ${callData}`);
   let contractCall;
   try {
     contractCall = evmClient.callContract(runtime2, {
@@ -16321,7 +16314,6 @@ var getSafeAddress = (runtime2) => {
       }),
       blockNumber: LAST_FINALIZED_BLOCK_NUMBER
     }).result();
-    runtime2.log("3 - avatar() call succeeded");
   } catch (error) {
     runtime2.log(`Error calling avatar(): ${error}`);
     runtime2.log(`Error details: ${JSON.stringify(error, null, 2)}`);
@@ -16332,7 +16324,6 @@ var getSafeAddress = (runtime2) => {
     functionName: "avatar",
     data: bytesToHex(contractCall.data)
   });
-  runtime2.log("4");
   return safeAddress;
 };
 var getTokenDecimals = (runtime2, tokenAddress, chainSelectorName) => {
