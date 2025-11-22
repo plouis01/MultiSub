@@ -1,118 +1,219 @@
 # MultiSub
 
-> A secure self-custody DeFi wallet system that leverages Safe (Gnosis) multisig and Zodiac Roles for delegated, permission-restricted interactions with curated DeFi protocols like Morpho Vaults.
+> A secure self-custody DeFi wallet built as a **custom Zodiac module**, combining Safe multisig security with delegated permission-restricted interactions.
 
-[![Tests](https://img.shields.io/badge/tests-1%2F1%20passing-brightgreen)]()
 [![Solidity](https://img.shields.io/badge/solidity-0.8.20-blue)]()
+[![Tests](https://img.shields.io/badge/tests-25%2F25%20passing-brightgreen)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
+[![Zodiac](https://img.shields.io/badge/zodiac-module-purple)]()
 
 ## Overview
 
-MultiSub is a self-custody DeFi wallet system that combines the security of Safe multisig with the flexibility of delegated permissions. Sub-accounts can execute DeFi operations within strict limits, while the Safe retains full control and can revoke permissions instantly.
+MultiSub is a **custom Zodiac module** that enables Safe multisig owners to delegate DeFi operations to sub-accounts (hot wallets) while maintaining strict security controls.
 
-### Key Features
+**The Problem**: Traditional self-custody forces you to choose between security (multisig), usability (hot wallet), or flexibility (delegation).
 
-- **Smart Delegation**
-- Role-based access control via Zodiac
-- Per-sub-account protocol allowlisting (granular control)
-- Time-windowed cumulative limits (24h rolling windows)
-- Instant permission revocation
-
-- **Multi-Protocol Support**
-- Native Morpho Vault integration (ERC4626)
-- Generic protocol execution with loss limits
-- Chainlink oracle integration for portfolio valuation
+**Our Solution**: A self-contained Zodiac module with integrated role management, per-sub-account allowlists, and time-windowed limits.
 
 ## Quick Start
 
-### Prerequisites
-
-- [Foundry](https://getfoundry.sh/) installed
-- A Safe multisig deployed (create at [app.safe.global](https://app.safe.global/))
-- Zodiac Roles module attached to your Safe
-
-### Installation
-
 ```bash
-# Clone repository
+# 1. Install
 git clone <repository-url>
 cd MultiSub
+forge install && forge build
 
-# Install dependencies
-forge install
+# 2. Deploy
+forge script script/DeployDeFiModule.s.sol --broadcast
 
-# Build contracts
-forge build
-
-# Run tests (1/1 passing)
-forge test
+# 3. Configure
+forge script script/SetupDeFiModule.s.sol --broadcast
 ```
+
+**Prerequisites**: [Foundry](https://getfoundry.sh/), a deployed [Safe](https://app.safe.global/)
 
 ## Architecture
 
 ```
-┌──────────────────┐
-│  Safe Multisig   │ ← Root owner (3/5 signatures)
-└────────┬─────────┘
-         │
-         ↓
-┌──────────────────┐
-│  Zodiac Roles    │ ← Access control layer
-└────────┬─────────┘
-         │
-         ↓
-┌──────────────────┐
-│ DeFiInteractor   │ ← Enforces limits & security
-└────────┬─────────┘
-         │
-         ↓
-┌──────────────────┐
-│  Sub-Accounts    │ ← Delegated permissions
-└────────┬─────────┘
-         │
-         ↓
-┌──────────────────┐
-│  Morpho Vaults   │ ← Curated DeFi protocols
-└──────────────────┘
+┌────────────────────────────────────┐
+│        Safe Multisig               │
+│      (Avatar & Owner)              │
+│                                    │
+│  • Enables/disables module         │
+│  • Configures roles & limits       │
+│  • Emergency controls              │
+└─────────────┬──────────────────────┘
+              │ enableModule()
+              ↓
+┌────────────────────────────────────┐
+│    DeFiInteractorModule            │
+│    (Custom Zodiac Module)          │
+│                                    │
+│  Features:                         │
+│  ├─ 2 Roles (Execute, Transfer)    │
+│  ├─ Per-sub-account allowlists     │
+│  ├─ Customizable limits            │
+│  └─ Emergency pause                │
+│                                    │
+│  Uses: exec() → Safe               │
+└─────────────┬──────────────────────┘
+              │
+              ↓
+┌────────────────────────────────────┐
+│      Sub-Accounts (EOAs)           │
+│                                    │
+│  • approveProtocol()               │
+│  • executeOnProtocol()             │
+│  • transferToken()                 │
+└────────────────────────────────────┘
 ```
 
-## Test Coverage
+## Key Features
+
+### 🎯 Streamlined Roles
+- **DEFI_EXECUTE_ROLE (1)**: Approve tokens & execute protocol operations
+- **DEFI_TRANSFER_ROLE (2)**: Transfer tokens from Safe
+
+### 🔐 Granular Controls
+- **Per-Sub-Account Allowlists**: Each sub-account has its own protocol whitelist
+- **Custom Limits**: Configurable deposit/withdraw/loss percentages per sub-account
+- **Time Windows**: Rolling 24-hour windows prevent rapid drain attacks
+
+### 🛡️ Security
+- Separate approval workflow (prevents approval draining)
+- Time-windowed cumulative limits (prevents rapid drain attacks)
+- Emergency pause mechanism
+- Instant role revocation
+- Unusual activity detection
+
+## Usage
+
+### Owner (Safe) Operations
 
 ```bash
-forge test -vv
+# Grant roles
+cast send $MODULE "grantRole(address,uint16)" $SUB_ACCOUNT 1
+
+# Set limits (15% deposit, 10% withdraw, 8% max loss, 48h window)
+cast send $MODULE "setSubAccountLimits(address,uint256,uint256,uint256,uint256)" \
+  $SUB_ACCOUNT 1500 1000 800 172800
+
+# Configure allowed protocols
+cast send $MODULE "setAllowedAddresses(address,address[],bool)" \
+  $SUB_ACCOUNT "[$MORPHO_VAULT,$AAVE_POOL]" true
 ```
 
-## Smart Contract Addresses
-
-Contracts will be deployed to Sepolia testnet:
+### Sub-Account Operations
 
 ```bash
-# Add to .env after deployment
-SAFE_ADDRESS=0x...
-ZODIAC_ROLES_ADDRESS=0x...
-DEFI_INTERACTOR_ADDRESS=0x...
+# Approve token
+cast send $MODULE "approveProtocol(address,address,uint256)" \
+  $USDC $MORPHO_VAULT 1000000000
+
+# Execute protocol operation
+DATA=$(cast calldata "deposit(uint256,address)" 500000000 $SAFE)
+cast send $MODULE "executeOnProtocol(address,bytes)" $MORPHO_VAULT $DATA
+
+# Transfer tokens
+cast send $MODULE "transferToken(address,address,uint256)" \
+  $USDC $RECIPIENT 100000000
 ```
+
+## Default Limits
+
+If not configured, sub-accounts use:
+- **Max Deposit**: 10% per 24 hours
+- **Max Withdraw**: 5% per 24 hours
+- **Max Loss**: 5% per 24 hours
+- **Window**: 24 hours (86400 seconds)
+
+## File Structure
+
+```
+src/
+├── base/Module.sol               # Base Zodiac module
+├── DeFiInteractorModule.sol      # Main module (18.5 KB)
+└── interfaces/                   # Interface files
+
+script/
+├── DeployDeFiModule.s.sol       # Deploy
+└── SetupDeFiModule.s.sol        # Configure
+
+test/
+└── DeFiInteractorModule.t.sol   # 25/25 tests ✅
+```
+
+## Testing
+
+```bash
+# Run all tests
+forge test
+
+# With gas reporting
+forge test --gas-report
+
+# Specific test with verbosity
+forge test --match-test testGrantRole -vvv
+```
+
+**Status**: 25/25 tests passing ✅
+
+## Use Cases
+
+- **Individual Users**: Mobile DeFi with cold storage security
+- **Family Wallets**: Each member with custom limits
+- **DAOs**: Delegate treasury management with controls
+- **Institutions**: Operational DeFi with compliance
+
+## Documentation
+
+| Document | Purpose |
+|----------|---------|
+| **[PROJECT_GUIDE.md](./PROJECT_GUIDE.md)** | Complete technical & non-technical guide |
+| **[DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)** | Step-by-step deployment instructions |
+| **README.md** (this file) | Quick overview |
+
+## Emergency Controls
+
+```bash
+# Pause all operations
+cast send $MODULE "pause()"
+
+# Revoke compromised sub-account
+cast send $MODULE "revokeRole(address,uint16)" $COMPROMISED_ACCOUNT 1
+
+# Disable module entirely (from Safe)
+cast send $SAFE "disableModule(address,address)" $PREV_MODULE $MODULE
+```
+
+## Security
+
+**Built-in Protection**:
+- Role-based access control
+- Time-windowed cumulative limits
+- Separate approval workflow
+- Emergency pause mechanism
+- Reentrancy guards
 
 ## Resources
 
+- [Zodiac Wiki](https://www.zodiac.wiki/)
 - [Safe Documentation](https://docs.safe.global/)
-- [Zodiac Roles](https://zodiac.wiki/index.php/Category:Roles_Modifier)
-- [Morpho Documentation](https://docs.morpho.org/)
-- [OpenZeppelin Contracts](https://docs.openzeppelin.com/contracts/)
+- [Foundry Book](https://book.getfoundry.sh/)
 
 ## License
 
-MIT License - see [LICENSE](./LICENSE) for details
+MIT License - see [LICENSE](./LICENSE)
 
 ## Disclaimer
 
 ⚠️ **Use at your own risk**
 
-- Testnet deployment recommended
-- External audit required for production
-- Smart contracts may contain undiscovered vulnerabilities
+- Smart contracts may contain vulnerabilities
 - Not financial advice
 
 ---
 
-**Built for the DeFi self-custody community**
+**Built with Zodiac for secure DeFi self-custody** 🛡️
+
+For detailed information, see [PROJECT_GUIDE.md](./PROJECT_GUIDE.md) and [DEPLOYMENT_GUIDE.md](./DEPLOYMENT_GUIDE.md)
