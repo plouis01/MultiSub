@@ -4,15 +4,20 @@ pragma solidity ^0.8.20;
 import {IMorphoVault} from "./interfaces/IMorphoVault.sol";
 import {ISafe} from "./interfaces/ISafe.sol";
 import {IZodiacRoles} from "./interfaces/IZodiacRoles.sol";
+import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 
 /**
  * @title DeFiInteractor
  * @notice Contract for executing DeFi operations through Safe+Zodiac with restrictions
  * @dev Sub-accounts interact with this contract which enforces role-based permissions
  */
-contract DeFiInteractor {
+contract DeFiInteractor is ReentrancyGuard, Pausable {
+    using SafeERC20 for IERC20;
+
     /// @notice The Safe multisig that owns the assets
     ISafe public immutable safe;
 
@@ -49,6 +54,25 @@ contract DeFiInteractor {
         rolesModifier = IZodiacRoles(_rolesModifier);
     }
 
+    // ============ Emergency Controls ============
+
+    /**
+     * @notice Pause all operations (only Safe can call)
+     */
+    function pause() external onlySafe {
+        _pause();
+        emit EmergencyPaused(msg.sender, block.timestamp);
+    }
+
+    /**
+     * @notice Unpause all operations (only Safe can call)
+     */
+    function unpause() external onlySafe {
+        _unpause();
+        emit EmergencyUnpaused(msg.sender, block.timestamp);
+    }
+
+
     // ============ Core Functions with Enhanced Security ============
 
     /**
@@ -62,7 +86,7 @@ contract DeFiInteractor {
         address target,
         uint256 assets,
         address receiver,
-    ) external returns (uint256 actualShares) {
+    ) external nonReentrant whenNotPaused returns (uint256 actualShares) {
         // Check role permission
         if (!rolesModifier.hasRole(msg.sender, DEFI_DEPOSIT_ROLE)) revert Unauthorized();
 
@@ -106,7 +130,7 @@ contract DeFiInteractor {
         uint256 assets,
         address receiver,
         address owner,
-    ) external returns (uint256 actualShares) {
+    ) external nonReentrant whenNotPaused returns (uint256 actualShares) {
         // Check role permission
         if (!rolesModifier.hasRole(msg.sender, DEFI_WITHDRAW_ROLE)) revert Unauthorized();
 
