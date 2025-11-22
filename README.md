@@ -203,7 +203,8 @@ The **DeFiInteractorModule** includes integrated Safe value monitoring powered b
 
 The module automatically tracks and stores the USD value of its associated Safe:
 - Runs every 30 seconds (configurable)
-- Fetches token balances from the Safe
+- Fetches token balances from the Safe (ERC20 + DeFi positions)
+- Supports Aave aTokens, Morpho vaults, Uniswap LP, and 100+ major tokens
 - Gets USD prices from Chainlink price feeds
 - Calculates total portfolio value in USD
 - Stores value on-chain via signed Chainlink reports

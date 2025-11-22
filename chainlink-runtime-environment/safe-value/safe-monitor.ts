@@ -56,6 +56,106 @@ const ChainlinkPriceFeedABI = [
 	},
 ] as const
 
+// Aave aToken ABI (inherits ERC20 but has exchangeRate functionality)
+const AaveATokenABI = [
+	{
+		inputs: [{ name: 'account', type: 'address', internalType: 'address' }],
+		name: 'balanceOf',
+		outputs: [{ name: '', type: 'uint256', internalType: 'uint256' }],
+		stateMutability: 'view',
+		type: 'function',
+	},
+	{
+		inputs: [],
+		name: 'decimals',
+		outputs: [{ name: '', type: 'uint8', internalType: 'uint8' }],
+		stateMutability: 'view',
+		type: 'function',
+	},
+] as const
+
+// Morpho Vault ABI
+const MorphoVaultABI = [
+	{
+		inputs: [{ name: 'account', type: 'address', internalType: 'address' }],
+		name: 'balanceOf',
+		outputs: [{ name: '', type: 'uint256', internalType: 'uint256' }],
+		stateMutability: 'view',
+		type: 'function',
+	},
+	{
+		inputs: [],
+		name: 'decimals',
+		outputs: [{ name: '', type: 'uint8', internalType: 'uint8' }],
+		stateMutability: 'view',
+		type: 'function',
+	},
+	{
+		inputs: [{ name: 'shares', type: 'uint256', internalType: 'uint256' }],
+		name: 'convertToAssets',
+		outputs: [{ name: '', type: 'uint256', internalType: 'uint256' }],
+		stateMutability: 'view',
+		type: 'function',
+	},
+	{
+		inputs: [],
+		name: 'asset',
+		outputs: [{ name: '', type: 'address', internalType: 'address' }],
+		stateMutability: 'view',
+		type: 'function',
+	},
+] as const
+
+// Uniswap V2 Pair ABI
+const UniswapV2PairABI = [
+	{
+		inputs: [{ name: 'account', type: 'address', internalType: 'address' }],
+		name: 'balanceOf',
+		outputs: [{ name: '', type: 'uint256', internalType: 'uint256' }],
+		stateMutability: 'view',
+		type: 'function',
+	},
+	{
+		inputs: [],
+		name: 'decimals',
+		outputs: [{ name: '', type: 'uint8', internalType: 'uint8' }],
+		stateMutability: 'view',
+		type: 'function',
+	},
+	{
+		inputs: [],
+		name: 'totalSupply',
+		outputs: [{ name: '', type: 'uint256', internalType: 'uint256' }],
+		stateMutability: 'view',
+		type: 'function',
+	},
+	{
+		inputs: [],
+		name: 'getReserves',
+		outputs: [
+			{ name: 'reserve0', type: 'uint112', internalType: 'uint112' },
+			{ name: 'reserve1', type: 'uint112', internalType: 'uint112' },
+			{ name: 'blockTimestampLast', type: 'uint32', internalType: 'uint32' },
+		],
+		stateMutability: 'view',
+		type: 'function',
+	},
+	{
+		inputs: [],
+		name: 'token0',
+		outputs: [{ name: '', type: 'address', internalType: 'address' }],
+		stateMutability: 'view',
+		type: 'function',
+	},
+	{
+		inputs: [],
+		name: 'token1',
+		outputs: [{ name: '', type: 'address', internalType: 'address' }],
+		stateMutability: 'view',
+		type: 'function',
+	},
+] as const
+
 const configSchema = z.object({
 	schedule: z.string(), // Cron schedule (e.g., "*/30 * * * * *" for every 30 seconds)
 	moduleAddress: z.string(), // DeFiInteractorModule contract address (which monitors its avatar Safe)
@@ -67,6 +167,13 @@ const configSchema = z.object({
 			address: z.string(), // Token contract address
 			priceFeedAddress: z.string(), // Chainlink price feed for this token
 			symbol: z.string(), // Token symbol for logging
+			type: z.enum(['erc20', 'aave-atoken', 'morpho-vault', 'uniswap-v2-lp', 'uniswap-v3-position']).optional(), // Token type
+			// Optional fields for DeFi protocol tokens
+			underlyingAsset: z.string().optional(), // For aTokens and Morpho - the underlying asset
+			token0: z.string().optional(), // For Uniswap V2 LP - first token
+			token1: z.string().optional(), // For Uniswap V2 LP - second token
+			priceFeed0: z.string().optional(), // Price feed for token0
+			priceFeed1: z.string().optional(), // Price feed for token1
 		}),
 	),
 })
@@ -294,6 +401,168 @@ const getChainlinkPrice = (
 }
 
 /**
+ * Calculate value for Morpho vault shares
+ */
+const calculateMorphoValue = (
+	runtime: Runtime<Config>,
+	tokenConfig: Config['tokens'][0],
+	safeAddress: string,
+): bigint => {
+	const network = getNetwork({
+		chainFamily: 'evm',
+		chainSelectorName: runtime.config.chainSelectorName,
+		isTestnet: true,
+	})
+
+	if (!network) {
+		throw new Error(`Network not found`)
+	}
+
+	const evmClient = new cre.capabilities.EVMClient(network.chainSelector.selector)
+
+	// Get vault shares balance
+	const sharesBalance = getTokenBalance(runtime, tokenConfig.address, safeAddress, runtime.config.chainSelectorName)
+
+	// Convert shares to underlying assets
+	const convertCallData = encodeFunctionData({
+		abi: MorphoVaultABI,
+		functionName: 'convertToAssets',
+		args: [sharesBalance],
+	})
+
+	const convertCall = evmClient
+		.callContract(runtime, {
+			call: encodeCallMsg({
+				from: zeroAddress,
+				to: tokenConfig.address as Address,
+				data: convertCallData,
+			}),
+			blockNumber: LAST_FINALIZED_BLOCK_NUMBER,
+		})
+		.result()
+
+	const underlyingAmount = decodeFunctionResult({
+		abi: MorphoVaultABI,
+		functionName: 'convertToAssets',
+		data: bytesToHex(convertCall.data),
+	})
+
+	runtime.log(`  Morpho: ${sharesBalance.toString()} shares = ${underlyingAmount.toString()} underlying assets`)
+
+	// Get underlying asset price
+	const underlyingDecimals = getTokenDecimals(runtime, tokenConfig.underlyingAsset!, runtime.config.chainSelectorName)
+	const { price: underlyingPrice, decimals: priceDecimals } = getChainlinkPrice(
+		runtime,
+		tokenConfig.priceFeedAddress,
+		runtime.config.chainSelectorName,
+	)
+
+	// Calculate USD value
+	return (underlyingAmount * underlyingPrice * BigInt(10 ** 18)) / BigInt(10 ** underlyingDecimals) / BigInt(10 ** priceDecimals)
+}
+
+/**
+ * Calculate value for Uniswap V2 LP tokens
+ */
+const calculateUniswapV2LPValue = (
+	runtime: Runtime<Config>,
+	tokenConfig: Config['tokens'][0],
+	safeAddress: string,
+): bigint => {
+	const network = getNetwork({
+		chainFamily: 'evm',
+		chainSelectorName: runtime.config.chainSelectorName,
+		isTestnet: true,
+	})
+
+	if (!network) {
+		throw new Error(`Network not found`)
+	}
+
+	const evmClient = new cre.capabilities.EVMClient(network.chainSelector.selector)
+
+	// Get LP token balance
+	const lpBalance = getTokenBalance(runtime, tokenConfig.address, safeAddress, runtime.config.chainSelectorName)
+
+	// Get total supply
+	const totalSupplyCallData = encodeFunctionData({
+		abi: UniswapV2PairABI,
+		functionName: 'totalSupply',
+	})
+
+	const totalSupplyCall = evmClient
+		.callContract(runtime, {
+			call: encodeCallMsg({
+				from: zeroAddress,
+				to: tokenConfig.address as Address,
+				data: totalSupplyCallData,
+			}),
+			blockNumber: LAST_FINALIZED_BLOCK_NUMBER,
+		})
+		.result()
+
+	const totalSupply = decodeFunctionResult({
+		abi: UniswapV2PairABI,
+		functionName: 'totalSupply',
+		data: bytesToHex(totalSupplyCall.data),
+	})
+
+	// Get reserves
+	const reservesCallData = encodeFunctionData({
+		abi: UniswapV2PairABI,
+		functionName: 'getReserves',
+	})
+
+	const reservesCall = evmClient
+		.callContract(runtime, {
+			call: encodeCallMsg({
+				from: zeroAddress,
+				to: tokenConfig.address as Address,
+				data: reservesCallData,
+			}),
+			blockNumber: LAST_FINALIZED_BLOCK_NUMBER,
+		})
+		.result()
+
+	const [reserve0, reserve1] = decodeFunctionResult({
+		abi: UniswapV2PairABI,
+		functionName: 'getReserves',
+		data: bytesToHex(reservesCall.data),
+	})
+
+	// Calculate ownership percentage
+	const ownershipPercentage = (lpBalance * BigInt(10 ** 18)) / totalSupply
+
+	// Calculate owned amounts of each token
+	const ownedToken0 = (BigInt(reserve0) * ownershipPercentage) / BigInt(10 ** 18)
+	const ownedToken1 = (BigInt(reserve1) * ownershipPercentage) / BigInt(10 ** 18)
+
+	runtime.log(`  Uniswap V2 LP: owns ${ownedToken0.toString()} token0, ${ownedToken1.toString()} token1`)
+
+	// Get prices for both tokens
+	const decimals0 = getTokenDecimals(runtime, tokenConfig.token0!, runtime.config.chainSelectorName)
+	const decimals1 = getTokenDecimals(runtime, tokenConfig.token1!, runtime.config.chainSelectorName)
+
+	const { price: price0, decimals: priceDecimals0 } = getChainlinkPrice(
+		runtime,
+		tokenConfig.priceFeed0!,
+		runtime.config.chainSelectorName,
+	)
+
+	const { price: price1, decimals: priceDecimals1 } = getChainlinkPrice(
+		runtime,
+		tokenConfig.priceFeed1!,
+		runtime.config.chainSelectorName,
+	)
+
+	// Calculate USD value for each token
+	const value0 = (ownedToken0 * price0 * BigInt(10 ** 18)) / BigInt(10 ** decimals0) / BigInt(10 ** priceDecimals0)
+	const value1 = (ownedToken1 * price1 * BigInt(10 ** 18)) / BigInt(10 ** decimals1) / BigInt(10 ** priceDecimals1)
+
+	return value0 + value1
+}
+
+/**
  * Calculate the total USD value of all tokens in the Safe
  */
 const calculateSafeValue = (runtime: Runtime<Config>): SafeValueData => {
@@ -306,34 +575,48 @@ const calculateSafeValue = (runtime: Runtime<Config>): SafeValueData => {
 	runtime.log(`Monitoring Safe: ${safeAddress}`)
 
 	for (const tokenConfig of config.tokens) {
-		runtime.log(`Processing token: ${tokenConfig.symbol} (${tokenConfig.address})`)
+		const tokenType = tokenConfig.type || 'erc20'
+		runtime.log(`Processing ${tokenType}: ${tokenConfig.symbol} (${tokenConfig.address})`)
 
-		// Get token balance
-		const balance = getTokenBalance(
-			runtime,
-			tokenConfig.address,
-			safeAddress,
-			config.chainSelectorName,
-		)
+		let valueUSD = 0n
+		let balance = 0n
+		let decimals = 0
+		let priceUSD = 0n
 
-		// Get token decimals
-		const decimals = getTokenDecimals(runtime, tokenConfig.address, config.chainSelectorName)
+		if (tokenType === 'morpho-vault') {
+			// Morpho vault shares
+			valueUSD = calculateMorphoValue(runtime, tokenConfig, safeAddress)
+			balance = getTokenBalance(runtime, tokenConfig.address, safeAddress, config.chainSelectorName)
+			decimals = getTokenDecimals(runtime, tokenConfig.address, config.chainSelectorName)
+			const { price } = getChainlinkPrice(runtime, tokenConfig.priceFeedAddress, config.chainSelectorName)
+			priceUSD = price
+		} else if (tokenType === 'uniswap-v2-lp') {
+			// Uniswap V2 LP tokens
+			valueUSD = calculateUniswapV2LPValue(runtime, tokenConfig, safeAddress)
+			balance = getTokenBalance(runtime, tokenConfig.address, safeAddress, config.chainSelectorName)
+			decimals = getTokenDecimals(runtime, tokenConfig.address, config.chainSelectorName)
+			priceUSD = 0n // Not directly applicable for LP tokens
+		} else {
+			// Standard ERC20, aTokens (they're 1:1 with underlying)
+			balance = getTokenBalance(runtime, tokenConfig.address, safeAddress, config.chainSelectorName)
+			decimals = getTokenDecimals(runtime, tokenConfig.address, config.chainSelectorName)
 
-		// Get USD price from Chainlink
-		const { price: priceUSD, decimals: priceDecimals } = getChainlinkPrice(
-			runtime,
-			tokenConfig.priceFeedAddress,
-			config.chainSelectorName,
-		)
+			const { price, decimals: priceDecimals } = getChainlinkPrice(
+				runtime,
+				tokenConfig.priceFeedAddress,
+				config.chainSelectorName,
+			)
+			priceUSD = price
 
-		runtime.log(
-			`${tokenConfig.symbol}: balance=${balance.toString()}, decimals=${decimals}, price=${priceUSD.toString()} (${priceDecimals} decimals)`,
-		)
+			runtime.log(
+				`  ${tokenConfig.symbol}: balance=${balance.toString()}, decimals=${decimals}, price=${priceUSD.toString()} (${priceDecimals} decimals)`,
+			)
 
-		// Calculate USD value for this token
-		// Formula: (balance * priceUSD) / (10^tokenDecimals) * (10^18) / (10^priceDecimals)
-		// Simplify to: (balance * priceUSD * 10^18) / (10^tokenDecimals * 10^priceDecimals)
-		const valueUSD = (balance * priceUSD * BigInt(10 ** 18)) / BigInt(10 ** decimals) / BigInt(10 ** priceDecimals)
+			// Calculate USD value
+			valueUSD = (balance * priceUSD * BigInt(10 ** 18)) / BigInt(10 ** decimals) / BigInt(10 ** priceDecimals)
+		}
+
+		runtime.log(`  Value: $${(Number(valueUSD) / 1e18).toFixed(2)} USD`)
 
 		totalValueUSD += valueUSD
 
