@@ -677,7 +677,39 @@ contract DeFiInteractor is ReentrancyGuard, Pausable {
 
         if (!success) revert TransactionFailed();
 
-        return 0;
+        // Verify actual assets received
+        uint256 assetsAfter = token.balanceOf(receiver);
+        uint256 actualAssetsReceived = assetsAfter - assetsBefore;
+        if (actualAssetsReceived < assets) revert InsufficientAssetsReceived();
+
+        // Verify actual shares burned
+        uint256 sharesAfter = morphoVault.balanceOf(owner);
+        actualShares = sharesBefore - sharesAfter;
+
+        if (actualShares > maxShares) revert InsufficientSharesReceived();
+
+        // Update cumulative tracking
+        withdrawnInWindow[msg.sender][target] = cumulativeWithdraw;
+
+        // Get shares after for monitoring
+        uint256 safeSharesAfter = morphoVault.balanceOf(address(safe));
+
+        // Comprehensive monitoring event
+        emit WithdrawExecuted(
+            msg.sender,
+            target,
+            assets,
+            actualShares,
+            safeSharesBefore,
+            safeSharesAfter,
+            cumulativeWithdraw,
+            percentageOfPosition,
+            block.timestamp
+        );
+
+        return actualShares;
+    }
+
     }
 
     // ============ Role Management ============
