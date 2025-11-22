@@ -4,6 +4,7 @@ pragma solidity ^0.8.20;
 import {IMorphoVault} from "./interfaces/IMorphoVault.sol";
 import {ISafe} from "./interfaces/ISafe.sol";
 import {IZodiacRoles} from "./interfaces/IZodiacRoles.sol";
+import {IPriceOracle} from "./interfaces/IPriceOracle.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Pausable} from "@openzeppelin/contracts/utils/Pausable.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
@@ -259,6 +260,19 @@ contract DeFiInteractor is ReentrancyGuard, Pausable {
         emit EmergencyUnpaused(msg.sender, block.timestamp);
     }
 
+    // ============ Oracle & Token Management ============
+
+    /**
+     * @notice Set the price oracle (only Safe can call)
+     * @param _oracle The price oracle address
+     */
+    function setOracle(address _oracle) external onlySafe {
+        if (_oracle == address(0)) revert InvalidAddress();
+        address oldOracle = address(priceOracle);
+        priceOracle = IPriceOracle(_oracle);
+        emit OracleUpdated(oldOracle, _oracle);
+    }
+
     /**
      * @notice Add a token to track for portfolio valuation (only Safe can call)
      * @param token The token address to track
@@ -320,6 +334,30 @@ contract DeFiInteractor is ReentrancyGuard, Pausable {
                 }
             }
             emit TrackedProtocolRemoved(protocol);
+        }
+    }
+
+    /**
+     * @notice Calculate the total portfolio value of the Safe
+     * @return totalValue The total value in USD (18 decimals)
+     */
+    function getPortfolioValue() public view returns (uint256 totalValue) {
+        if (address(priceOracle) == address(0)) revert OracleNotSet();
+        if (trackedTokens.length == 0 && trackedProtocols.length == 0) revert NoTrackedTokens();
+
+        // Value from token balances (USDC, WETH, etc.)
+        for (uint256 i = 0; i < trackedTokens.length; i++) {
+            address token = trackedTokens[i];
+            uint256 balance = IERC20(token).balanceOf(address(safe));
+            if (balance > 0) {
+                totalValue += priceOracle.getValue(token, balance);
+            }
+        }
+
+        // Value from protocol positions (Morpho vaults, Aave, etc.)
+        for (uint256 i = 0; i < trackedProtocols.length; i++) {
+            address protocol = trackedProtocols[i];
+            totalValue += priceOracle.getPositionValue(protocol, address(safe));
         }
     }
 
