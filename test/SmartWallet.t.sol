@@ -69,14 +69,55 @@ contract SmartWalletTest is Test {
         assertEq(wallet.rolesModifier(), address(rolesModifier));
     }
 
+    function testConstructorInvalidAddress() public {
+        vm.expectRevert(SmartWallet.InvalidAddress.selector);
+        new SmartWallet(address(0), address(rolesModifier));
+
+        vm.expectRevert(SmartWallet.InvalidAddress.selector);
+        new SmartWallet(safe, address(0));
+    }
+
+    function testAddSubAccount() public {
+        vm.prank(safe);
+        vm.expectEmit(true, false, false, false);
+        emit SubAccountAdded(subAccount);
+        wallet.addSubAccount(subAccount);
+
+        assertTrue(wallet.isSubAccount(subAccount));
+    }
+
+    function testAddSubAccountUnauthorized() public {
+        vm.prank(address(0x999));
+        vm.expectRevert(SmartWallet.Unauthorized.selector);
+        wallet.addSubAccount(subAccount);
+    }
+
     function testRemoveSubAccount() public {
         vm.startPrank(safe);
         wallet.addSubAccount(subAccount);
         assertTrue(wallet.isSubAccount(subAccount));
 
+        vm.expectEmit(true, false, false, false);
+        emit SubAccountRemoved(subAccount);
+        wallet.removeSubAccount(subAccount);
         vm.stopPrank();
 
         assertFalse(wallet.isSubAccount(subAccount));
+    }
+
+    function testWhitelistProtocol() public {
+        vm.prank(safe);
+        vm.expectEmit(true, false, false, false);
+        emit ProtocolWhitelisted(protocol);
+        wallet.whitelistProtocol(protocol);
+
+        assertTrue(wallet.isWhitelisted(protocol));
+    }
+
+    function testWhitelistProtocolUnauthorized() public {
+        vm.prank(address(0x999));
+        vm.expectRevert(SmartWallet.Unauthorized.selector);
+        wallet.whitelistProtocol(protocol);
     }
 
     function testRemoveProtocol() public {
@@ -84,6 +125,8 @@ contract SmartWalletTest is Test {
         wallet.whitelistProtocol(protocol);
         assertTrue(wallet.isWhitelisted(protocol));
 
+        vm.expectEmit(true, false, false, false);
+        emit ProtocolRemoved(protocol);
         wallet.removeProtocol(protocol);
         vm.stopPrank();
 
@@ -111,7 +154,7 @@ contract SmartWalletTest is Test {
         bytes memory data = abi.encodeWithSignature("someFunction(uint256)", 123);
 
         vm.prank(address(0x999));
-        vm.expectRevert();
+        vm.expectRevert(SmartWallet.SubAccountNotEnabled.selector);
         wallet.executeDelegatedTx(protocol, data);
     }
 
@@ -122,7 +165,7 @@ contract SmartWalletTest is Test {
         bytes memory data = abi.encodeWithSignature("someFunction(uint256)", 123);
 
         vm.prank(subAccount);
-        vm.expectRevert();
+        vm.expectRevert(SmartWallet.ProtocolNotWhitelisted.selector);
         wallet.executeDelegatedTx(protocol, data);
     }
 }
