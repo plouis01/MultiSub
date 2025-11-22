@@ -237,6 +237,10 @@ forge script script/DeployDeFiModule.s.sol --broadcast
 
 # Query Safe value
 cast call MODULE_ADDRESS "getSafeValue()(uint256,uint256,uint256)"
+
+# Query multiple token balances (batch query)
+cast call MODULE_ADDRESS "getTokenBalances(address[])(uint256[])" \
+  "[0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238,0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14]"
 ```
 
 ## Resources

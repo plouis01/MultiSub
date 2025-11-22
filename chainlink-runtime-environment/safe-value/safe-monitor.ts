@@ -406,7 +406,7 @@ const getChainlinkPrice = (
 const calculateMorphoValue = (
 	runtime: Runtime<Config>,
 	tokenConfig: Config['tokens'][0],
-	safeAddress: string,
+	sharesBalance: bigint,
 ): bigint => {
 	const network = getNetwork({
 		chainFamily: 'evm',
@@ -419,9 +419,6 @@ const calculateMorphoValue = (
 	}
 
 	const evmClient = new cre.capabilities.EVMClient(network.chainSelector.selector)
-
-	// Get vault shares balance
-	const sharesBalance = getTokenBalance(runtime, tokenConfig.address, safeAddress, runtime.config.chainSelectorName)
 
 	// Convert shares to underlying assets
 	const convertCallData = encodeFunctionData({
@@ -467,7 +464,7 @@ const calculateMorphoValue = (
 const calculateUniswapV2LPValue = (
 	runtime: Runtime<Config>,
 	tokenConfig: Config['tokens'][0],
-	safeAddress: string,
+	lpBalance: bigint,
 ): bigint => {
 	const network = getNetwork({
 		chainFamily: 'evm',
@@ -480,9 +477,6 @@ const calculateUniswapV2LPValue = (
 	}
 
 	const evmClient = new cre.capabilities.EVMClient(network.chainSelector.selector)
-
-	// Get LP token balance
-	const lpBalance = getTokenBalance(runtime, tokenConfig.address, safeAddress, runtime.config.chainSelectorName)
 
 	// Get total supply
 	const totalSupplyCallData = encodeFunctionData({
@@ -563,6 +557,59 @@ const calculateUniswapV2LPValue = (
 }
 
 /**
+ * Batch fetch all token balances from the Safe using getTokenBalances
+ */
+const getBatchTokenBalances = (runtime: Runtime<Config>, safeAddress: string): Map<string, bigint> => {
+	const config = runtime.config
+	const network = getNetwork({
+		chainFamily: 'evm',
+		chainSelectorName: config.chainSelectorName,
+		isTestnet: true,
+	})
+
+	if (!network) {
+		throw new Error(`Network not found for chain selector name: ${config.chainSelectorName}`)
+	}
+
+	const evmClient = new cre.capabilities.EVMClient(network.chainSelector.selector)
+
+	// Extract all token addresses from config
+	const tokenAddresses = config.tokens.map((t) => t.address as Address)
+
+	// Call getTokenBalances on the module
+	const callData = encodeFunctionData({
+		abi: DeFiInteractorModule,
+		functionName: 'getTokenBalances',
+		args: [tokenAddresses],
+	})
+
+	const contractCall = evmClient
+		.callContract(runtime, {
+			call: encodeCallMsg({
+				from: zeroAddress,
+				to: config.moduleAddress as Address,
+				data: callData,
+			}),
+			blockNumber: LAST_FINALIZED_BLOCK_NUMBER,
+		})
+		.result()
+
+	const balances = decodeFunctionResult({
+		abi: DeFiInteractorModule,
+		functionName: 'getTokenBalances',
+		data: bytesToHex(contractCall.data),
+	})
+
+	// Create a map of token address to balance
+	const balanceMap = new Map<string, bigint>()
+	for (let i = 0; i < tokenAddresses.length; i++) {
+		balanceMap.set(tokenAddresses[i].toLowerCase(), balances[i])
+	}
+
+	return balanceMap
+}
+
+/**
  * Calculate the total USD value of all tokens in the Safe
  */
 const calculateSafeValue = (runtime: Runtime<Config>): SafeValueData => {
@@ -574,6 +621,10 @@ const calculateSafeValue = (runtime: Runtime<Config>): SafeValueData => {
 	const safeAddress = getSafeAddress(runtime)
 	runtime.log(`Monitoring Safe: ${safeAddress}`)
 
+	// Batch fetch all token balances in a single call
+	runtime.log('Fetching all token balances in batch...')
+	const balanceMap = getBatchTokenBalances(runtime, safeAddress)
+
 	for (const tokenConfig of config.tokens) {
 		const tokenType = tokenConfig.type || 'erc20'
 		runtime.log(`Processing ${tokenType}: ${tokenConfig.symbol} (${tokenConfig.address})`)
@@ -583,22 +634,22 @@ const calculateSafeValue = (runtime: Runtime<Config>): SafeValueData => {
 		let decimals = 0
 		let priceUSD = 0n
 
+		// Get balance from batch result
+		balance = balanceMap.get(tokenConfig.address.toLowerCase()) || 0n
+
 		if (tokenType === 'morpho-vault') {
 			// Morpho vault shares
-			valueUSD = calculateMorphoValue(runtime, tokenConfig, safeAddress)
-			balance = getTokenBalance(runtime, tokenConfig.address, safeAddress, config.chainSelectorName)
+			valueUSD = calculateMorphoValue(runtime, tokenConfig, balance)
 			decimals = getTokenDecimals(runtime, tokenConfig.address, config.chainSelectorName)
 			const { price } = getChainlinkPrice(runtime, tokenConfig.priceFeedAddress, config.chainSelectorName)
 			priceUSD = price
 		} else if (tokenType === 'uniswap-v2-lp') {
 			// Uniswap V2 LP tokens
-			valueUSD = calculateUniswapV2LPValue(runtime, tokenConfig, safeAddress)
-			balance = getTokenBalance(runtime, tokenConfig.address, safeAddress, config.chainSelectorName)
+			valueUSD = calculateUniswapV2LPValue(runtime, tokenConfig, balance)
 			decimals = getTokenDecimals(runtime, tokenConfig.address, config.chainSelectorName)
 			priceUSD = 0n // Not directly applicable for LP tokens
 		} else {
 			// Standard ERC20, aTokens (they're 1:1 with underlying)
-			balance = getTokenBalance(runtime, tokenConfig.address, safeAddress, config.chainSelectorName)
 			decimals = getTokenDecimals(runtime, tokenConfig.address, config.chainSelectorName)
 
 			const { price, decimals: priceDecimals } = getChainlinkPrice(

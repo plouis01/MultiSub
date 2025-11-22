@@ -380,4 +380,36 @@ contract DeFiInteractorModuleTest is Test {
         // Event is emitted, we just test the role was revoked
         assertFalse(module.hasRole(subAccount1, module.DEFI_EXECUTE_ROLE()));
     }
+
+    function testGetTokenBalances() public {
+        // Create multiple tokens and mint to Safe
+        MockERC20 token1 = new MockERC20();
+        MockERC20 token2 = new MockERC20();
+        MockERC20 token3 = new MockERC20();
+
+        token1.mint(address(safe), 1000 * 10**18);
+        token2.mint(address(safe), 2000 * 10**18);
+        token3.mint(address(safe), 3000 * 10**18);
+
+        // Create token array
+        address[] memory tokens = new address[](3);
+        tokens[0] = address(token1);
+        tokens[1] = address(token2);
+        tokens[2] = address(token3);
+
+        // Call getTokenBalances
+        uint256[] memory balances = module.getTokenBalances(tokens);
+
+        // Verify balances
+        assertEq(balances.length, 3);
+        assertEq(balances[0], 1000 * 10**18);
+        assertEq(balances[1], 2000 * 10**18);
+        assertEq(balances[2], 3000 * 10**18);
+    }
+
+    function testGetTokenBalancesEmptyArray() public {
+        address[] memory tokens = new address[](0);
+        uint256[] memory balances = module.getTokenBalances(tokens);
+        assertEq(balances.length, 0);
+    }
 }

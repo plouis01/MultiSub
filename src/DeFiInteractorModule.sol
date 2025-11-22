@@ -616,4 +616,22 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
         authorizedUpdater = newUpdater;
         emit AuthorizedUpdaterChanged(oldUpdater, newUpdater);
     }
+
+    /**
+     * @notice Get the Safe's balance for multiple tokens
+     * @dev Returns the balance of the Safe (avatar) for each token in the array
+     * @param tokens Array of token addresses to query
+     * @return balances Array of balances corresponding to each token
+     */
+    function getTokenBalances(address[] calldata tokens)
+        external
+        view
+        returns (uint256[] memory balances)
+    {
+        balances = new uint256[](tokens.length);
+        for (uint256 i = 0; i < tokens.length; i++) {
+            balances[i] = IERC20(tokens[i]).balanceOf(avatar);
+        }
+        return balances;
+    }
 }

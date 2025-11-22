@@ -46,6 +46,13 @@ export const DeFiInteractorModule = [
 		stateMutability: 'view',
 	},
 	{
+		type: 'function',
+		name: 'getTokenBalances',
+		inputs: [{ name: 'tokens', type: 'address[]', internalType: 'address[]' }],
+		outputs: [{ name: 'balances', type: 'uint256[]', internalType: 'uint256[]' }],
+		stateMutability: 'view',
+	},
+	{
 		type: 'event',
 		name: 'SafeValueUpdated',
 		inputs: [
