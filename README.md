@@ -44,7 +44,7 @@ forge install
 # Build contracts
 forge build
 
-# Run tests (98/98 passing)
+# Run tests (1/1 passing)
 forge test
 ```
 
