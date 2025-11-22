@@ -3,7 +3,7 @@
 > A secure self-custody DeFi wallet built as a **custom Zodiac module**, combining Safe multisig security with delegated permission-restricted interactions.
 
 [![Solidity](https://img.shields.io/badge/solidity-0.8.20-blue)]()
-[![Tests](https://img.shields.io/badge/tests-44%2F44%20passing-brightgreen)]()
+[![Tests](https://img.shields.io/badge/tests-49%2F49%20passing-brightgreen)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
 [![Zodiac](https://img.shields.io/badge/zodiac-module-purple)]()
 

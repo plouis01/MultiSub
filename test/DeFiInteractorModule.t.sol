@@ -225,6 +225,80 @@ contract DeFiInteractorModuleTest is Test {
         assertTrue(module.hasRole(subAccount1, module.DEFI_TRANSFER_ROLE()));
     }
 
+    function testSubaccountArrayTracking() public {
+        // Initially no sub-accounts
+        assertEq(module.getSubaccountCount(module.DEFI_EXECUTE_ROLE()), 0);
+
+        // Grant role to subAccount1
+        module.grantRole(subAccount1, module.DEFI_EXECUTE_ROLE());
+        assertEq(module.getSubaccountCount(module.DEFI_EXECUTE_ROLE()), 1);
+
+        // Grant same role to subAccount2
+        module.grantRole(subAccount2, module.DEFI_EXECUTE_ROLE());
+        assertEq(module.getSubaccountCount(module.DEFI_EXECUTE_ROLE()), 2);
+
+        // Get all sub-accounts with execute role
+        address[] memory accounts = module.getSubaccountsByRole(module.DEFI_EXECUTE_ROLE());
+        assertEq(accounts.length, 2);
+        assertTrue(accounts[0] == subAccount1 || accounts[1] == subAccount1);
+        assertTrue(accounts[0] == subAccount2 || accounts[1] == subAccount2);
+    }
+
+    function testRevokeRoleRemovesFromArray() public {
+        // Grant roles to both accounts
+        module.grantRole(subAccount1, module.DEFI_EXECUTE_ROLE());
+        module.grantRole(subAccount2, module.DEFI_EXECUTE_ROLE());
+        assertEq(module.getSubaccountCount(module.DEFI_EXECUTE_ROLE()), 2);
+
+        // Revoke from subAccount1
+        module.revokeRole(subAccount1, module.DEFI_EXECUTE_ROLE());
+        assertEq(module.getSubaccountCount(module.DEFI_EXECUTE_ROLE()), 1);
+
+        // Check that only subAccount2 remains
+        address[] memory accounts = module.getSubaccountsByRole(module.DEFI_EXECUTE_ROLE());
+        assertEq(accounts.length, 1);
+        assertEq(accounts[0], subAccount2);
+    }
+
+    function testGrantSameRoleTwiceDoesNotDuplicate() public {
+        // Grant role twice to same account
+        module.grantRole(subAccount1, module.DEFI_EXECUTE_ROLE());
+        module.grantRole(subAccount1, module.DEFI_EXECUTE_ROLE());
+
+        // Should only be in array once
+        assertEq(module.getSubaccountCount(module.DEFI_EXECUTE_ROLE()), 1);
+        address[] memory accounts = module.getSubaccountsByRole(module.DEFI_EXECUTE_ROLE());
+        assertEq(accounts.length, 1);
+        assertEq(accounts[0], subAccount1);
+    }
+
+    function testRevokeSameRoleTwiceDoesNotError() public {
+        // Grant and revoke
+        module.grantRole(subAccount1, module.DEFI_EXECUTE_ROLE());
+        module.revokeRole(subAccount1, module.DEFI_EXECUTE_ROLE());
+        assertEq(module.getSubaccountCount(module.DEFI_EXECUTE_ROLE()), 0);
+
+        // Revoke again - should not error
+        module.revokeRole(subAccount1, module.DEFI_EXECUTE_ROLE());
+        assertEq(module.getSubaccountCount(module.DEFI_EXECUTE_ROLE()), 0);
+    }
+
+    function testMultipleRolesPerAccount() public {
+        // Grant both roles to same account
+        module.grantRole(subAccount1, module.DEFI_EXECUTE_ROLE());
+        module.grantRole(subAccount1, module.DEFI_TRANSFER_ROLE());
+
+        // Should be in both arrays
+        assertEq(module.getSubaccountCount(module.DEFI_EXECUTE_ROLE()), 1);
+        assertEq(module.getSubaccountCount(module.DEFI_TRANSFER_ROLE()), 1);
+
+        address[] memory executeAccounts = module.getSubaccountsByRole(module.DEFI_EXECUTE_ROLE());
+        address[] memory transferAccounts = module.getSubaccountsByRole(module.DEFI_TRANSFER_ROLE());
+
+        assertEq(executeAccounts[0], subAccount1);
+        assertEq(transferAccounts[0], subAccount1);
+    }
+
     // ============ Sub-Account Limits Tests ============
 
     function testSetSubAccountLimits() public {

@@ -94,6 +94,9 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
     /// @notice Per-sub-account allowed addresses: subAccount => target address => allowed
     mapping(address => mapping(address => bool)) public allowedAddresses;
 
+    /// @notice roles => subAccount[]
+    mapping(uint16 => address[]) public subaccount;
+
     /// @notice Sub-account roles: subAccount => role => has role
     mapping(address => mapping(uint16 => bool)) public subAccountRoles;
 
@@ -291,8 +294,13 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
      */
     function grantRole(address member, uint16 roleId) external onlyOwner {
         if (member == address(0)) revert InvalidAddress();
-        subAccountRoles[member][roleId] = true;
-        emit RoleAssigned(member, roleId, block.timestamp);
+
+        // Only add to array if member doesn't already have this role
+        if (!subAccountRoles[member][roleId]) {
+            subAccountRoles[member][roleId] = true;
+            subaccount[roleId].push(member);
+            emit RoleAssigned(member, roleId, block.timestamp);
+        }
     }
 
     /**
@@ -302,8 +310,32 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
      */
     function revokeRole(address member, uint16 roleId) external onlyOwner {
         if (member == address(0)) revert InvalidAddress();
-        subAccountRoles[member][roleId] = false;
-        emit RoleRevoked(member, roleId, block.timestamp);
+
+        // Only remove if member currently has this role
+        if (subAccountRoles[member][roleId]) {
+            subAccountRoles[member][roleId] = false;
+            _removeFromSubaccountArray(roleId, member);
+            emit RoleRevoked(member, roleId, block.timestamp);
+        }
+    }
+
+    /**
+     * @notice Internal function to remove an address from the subaccount array
+     * @param roleId The role ID
+     * @param member The address to remove
+     */
+    function _removeFromSubaccountArray(uint16 roleId, address member) internal {
+        address[] storage accounts = subaccount[roleId];
+        uint256 length = accounts.length;
+
+        for (uint256 i = 0; i < length; i++) {
+            if (accounts[i] == member) {
+                // Move last element to this position and pop
+                accounts[i] = accounts[length - 1];
+                accounts.pop();
+                break;
+            }
+        }
     }
 
     /**
@@ -314,6 +346,24 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
      */
     function hasRole(address member, uint16 roleId) public view returns (bool) {
         return subAccountRoles[member][roleId];
+    }
+
+    /**
+     * @notice Get all sub-accounts for a specific role
+     * @param roleId The role ID to query
+     * @return address[] Array of addresses that have this role
+     */
+    function getSubaccountsByRole(uint16 roleId) external view returns (address[] memory) {
+        return subaccount[roleId];
+    }
+
+    /**
+     * @notice Get the count of sub-accounts for a specific role
+     * @param roleId The role ID to query
+     * @return uint256 Number of addresses that have this role
+     */
+    function getSubaccountCount(uint16 roleId) external view returns (uint256) {
+        return subaccount[roleId].length;
     }
 
     // ============ Sub-Account Configuration ============
