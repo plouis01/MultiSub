@@ -30,6 +30,13 @@ contract DeFiInteractor is ReentrancyGuard, Pausable {
 
     /// @notice Role ID for withdrawal operations (more restricted)
     uint16 public constant DEFI_WITHDRAW_ROLE = 2;
+
+    /// @notice Role ID for generic protocol execution
+    uint16 public constant DEFI_EXECUTE_ROLE = 3;
+
+    /// @notice Role ID for token transfers
+    uint16 public constant DEFI_TRANSFER_ROLE = 4;
+
     /// @notice Price oracle for portfolio valuation
     IPriceOracle public priceOracle;
 
@@ -461,6 +468,58 @@ contract DeFiInteractor is ReentrancyGuard, Pausable {
         emit AllowedAddressesSet(subAccount, targets, allowed, block.timestamp);
     }
 
+    // ============ Protocol Approval Management ============
+
+    /**
+     * @notice Approve a token for a whitelisted protocol
+     * @param token The token to approve
+     * @param target The protocol to approve for (must be whitelisted)
+     * @param amount The amount to approve (must be within sub-account's maxLossBps limit)
+     */
+    function approveProtocol(
+        address token,
+        address target,
+        uint256 amount
+    ) external nonReentrant whenNotPaused {
+        // Check role permission
+        if (!rolesModifier.hasRole(msg.sender, DEFI_EXECUTE_ROLE)) revert Unauthorized();
+
+        // This ensures only Safe-approved protocols can receive token approvals
+        if (!allowedAddresses[msg.sender][target]) revert AddressNotAllowed();
+
+        // Get sub-account's maxLossBps limit
+        (, , uint256 maxLossBps, ) = getSubAccountLimits(msg.sender);
+
+        // Calculate maximum approval based on portfolio value
+        uint256 portfolioValue = getPortfolioValue();
+        uint256 tokenValue = priceOracle.getValue(token, amount);
+        uint256 maxAllowedValue = Math.mulDiv(portfolioValue, maxLossBps, 10000, Math.Rounding.Floor);
+
+        if (tokenValue > maxAllowedValue) {
+            revert ApprovalExceedsLimit();
+        }
+
+        // Execute approval through Zodiac Roles -> Safe
+        bytes memory approveData = abi.encodeWithSelector(
+            IERC20.approve.selector,
+            target,
+            amount
+        );
+
+        bool success = rolesModifier.execTransactionWithRole(
+            token,
+            0,
+            approveData,
+            0,
+            DEFI_EXECUTE_ROLE,
+            true
+        );
+
+        if (!success) revert TransactionFailed();
+
+        emit ApprovalExecuted(msg.sender, token, target, amount, block.timestamp);
+    }
+
     // ============ Core Functions with Enhanced Security ============
 
     /**
@@ -710,6 +769,193 @@ contract DeFiInteractor is ReentrancyGuard, Pausable {
         return actualShares;
     }
 
+    // ============ Token Transfer ============
+
+    /**
+     * @notice Transfer tokens from Safe to a recipient with role-based restrictions
+     * @param token The token address to transfer
+     * @param recipient The recipient address
+     * @param amount The amount to transfer
+     * @return success Whether the transfer succeeded
+     */
+    function transferToken(
+        address token,
+        address recipient,
+        uint256 amount
+    ) external nonReentrant whenNotPaused returns (bool success) {
+        // Check role permission
+        if (!rolesModifier.hasRole(msg.sender, DEFI_TRANSFER_ROLE)) revert Unauthorized();
+
+        // Validate addresses
+        if (token == address(0) || recipient == address(0)) revert InvalidAddress();
+
+        IERC20 tokenContract = IERC20(token);
+        uint256 safeBalanceBefore = tokenContract.balanceOf(address(safe));
+
+        // Get sub-account specific limits (use maxWithdrawBps for transfers)
+        (, uint256 maxTransferBps, , uint256 windowDuration) = getSubAccountLimits(msg.sender);
+
+        // Reset window if expired or first time
+        if (block.timestamp >= transferWindowStart[msg.sender][token] + windowDuration ||
+            transferWindowStart[msg.sender][token] == 0) {
+            transferredInWindow[msg.sender][token] = 0;
+            transferWindowStart[msg.sender][token] = block.timestamp;
+            transferWindowBalance[msg.sender][token] = safeBalanceBefore;
+            emit TransferWindowReset(msg.sender, token, block.timestamp);
+        }
+
+        // Calculate cumulative limit based on balance at window start
+        uint256 windowBalance = transferWindowBalance[msg.sender][token];
+        uint256 cumulativeTransfer = transferredInWindow[msg.sender][token] + amount;
+        uint256 maxTransfer = Math.mulDiv(windowBalance, maxTransferBps, 10000, Math.Rounding.Floor);
+
+        if (cumulativeTransfer > maxTransfer) revert ExceedsTransferLimit();
+
+        // Calculate percentage for monitoring
+        uint256 percentageOfBalance = Math.mulDiv(amount, 10000, safeBalanceBefore, Math.Rounding.Floor);
+
+        // Alert on unusual activity (>4% in single transaction)
+        if (percentageOfBalance > 400) {
+            emit UnusualActivity(
+                msg.sender,
+                "Large transfer percentage",
+                percentageOfBalance,
+                400,
+                block.timestamp
+            );
+        }
+
+        // Execute transfer through Zodiac Roles -> Safe
+        bytes memory transferData = abi.encodeWithSelector(
+            IERC20.transfer.selector,
+            recipient,
+            amount
+        );
+
+        success = rolesModifier.execTransactionWithRole(
+            token,
+            0,
+            transferData,
+            0,
+            DEFI_TRANSFER_ROLE,
+            true
+        );
+
+        if (!success) revert TransactionFailed();
+
+        // Verify transfer executed correctly
+        uint256 safeBalanceAfter = tokenContract.balanceOf(address(safe));
+        uint256 actualTransferred = safeBalanceBefore - safeBalanceAfter;
+
+        if (actualTransferred < amount) revert TransactionFailed();
+
+        // Update cumulative tracking
+        transferredInWindow[msg.sender][token] = cumulativeTransfer;
+
+        // Emit comprehensive event
+        emit TransferExecuted(
+            msg.sender,
+            token,
+            recipient,
+            amount,
+            safeBalanceBefore,
+            safeBalanceAfter,
+            cumulativeTransfer,
+            percentageOfBalance,
+            block.timestamp
+        );
+
+        return success;
+    }
+
+    // ============ Generic Protocol Execution ============
+
+    /**
+     * @notice Execute arbitrary calldata on a whitelisted protocol with portfolio value tracking
+     * @param target The protocol address to call
+     * @param data The calldata to execute
+     * @return result The return data from the call
+     */
+    function executeOnProtocol(
+        address target,
+        bytes calldata data
+    ) external nonReentrant whenNotPaused returns (bytes memory result) {
+        // Check role permission
+        if (!rolesModifier.hasRole(msg.sender, DEFI_EXECUTE_ROLE)) revert Unauthorized();
+
+        // This ensures only Safe-approved protocols can be executed
+        if (!allowedAddresses[msg.sender][target]) revert AddressNotAllowed();
+
+        // Get sub-account limits
+        (, , uint256 maxLossBps, uint256 windowDuration) = getSubAccountLimits(msg.sender);
+
+        // Block raw approve/increaseAllowance calls in calldata - use approveProtocol() instead
+        if (data.length >= 4) {
+            bytes4 selector = bytes4(data[:4]);
+            if (selector == IERC20.approve.selector || selector == bytes4(keccak256("increaseAllowance(address,uint256)"))) {
+                revert ApprovalNotAllowed();
+            }
+        }
+
+        // Get portfolio value before execution
+        uint256 portfolioValueBefore = getPortfolioValue();
+
+        // Reset window if expired or first time
+        if (block.timestamp >= executionWindowStart[msg.sender] + windowDuration ||
+            executionWindowStart[msg.sender] == 0) {
+            valueLostInWindow[msg.sender] = 0;
+            executionWindowStart[msg.sender] = block.timestamp;
+            executionWindowPortfolioValue[msg.sender] = portfolioValueBefore;
+            emit ExecutionWindowReset(msg.sender, block.timestamp, portfolioValueBefore);
+        }
+
+        // Execute the call through Zodiac Roles -> Safe
+        bool success = rolesModifier.execTransactionWithRole(
+            target,
+            0,
+            data,
+            0,
+            DEFI_EXECUTE_ROLE,
+            true
+        );
+
+        if (!success) revert TransactionFailed();
+
+        // Get portfolio value after execution
+        uint256 portfolioValueAfter = getPortfolioValue();
+
+        // Calculate value lost (if any)
+        uint256 valueLost = 0;
+        if (portfolioValueAfter < portfolioValueBefore) {
+            valueLost = portfolioValueBefore - portfolioValueAfter;
+        }
+
+        // Update cumulative loss tracking
+        uint256 cumulativeLoss = valueLostInWindow[msg.sender] + valueLost;
+
+        // Check against max loss limit
+        uint256 windowPortfolioValue = executionWindowPortfolioValue[msg.sender];
+        uint256 maxLoss = Math.mulDiv(windowPortfolioValue, maxLossBps, 10000, Math.Rounding.Floor);
+
+        if (cumulativeLoss > maxLoss) revert ExceedsMaxLoss();
+
+        // Update cumulative tracking
+        valueLostInWindow[msg.sender] = cumulativeLoss;
+
+        // Emit event
+        emit ProtocolExecuted(
+            msg.sender,
+            target,
+            portfolioValueBefore,
+            portfolioValueAfter,
+            valueLost,
+            cumulativeLoss,
+            block.timestamp
+        );
+
+        // Note: Return data is not captured with execTransactionWithRole
+        // This is a limitation of the Zodiac Roles interface
+        return "";
     }
 
     // ============ Role Management ============
