@@ -29,19 +29,206 @@ contract DeFiInteractor is ReentrancyGuard, Pausable {
 
     /// @notice Role ID for withdrawal operations (more restricted)
     uint16 public constant DEFI_WITHDRAW_ROLE = 2;
+    /// @notice Price oracle for portfolio valuation
+    IPriceOracle public priceOracle;
+
+    /// @notice List of tracked tokens for portfolio valuation
+    address[] public trackedTokens;
+
+    /// @notice Mapping to check if token is tracked
+    mapping(address => bool) public isTrackedToken;
+
+    /// @notice List of tracked protocols for portfolio valuation
+    address[] public trackedProtocols;
+
+    /// @notice Mapping to check if protocol is tracked
+    mapping(address => bool) public isTrackedProtocol;
+
+    /// @notice Default maximum percentage of portfolio value loss allowed per window (basis points)
+    uint256 public constant DEFAULT_MAX_LOSS_BPS = 500; // 5%
+
+    /// @notice Default maximum percentage of assets a sub-account can deposit (basis points)
+    uint256 public constant DEFAULT_MAX_DEPOSIT_BPS = 1000; // 10%
+
+    /// @notice Default maximum percentage of assets a sub-account can withdraw (basis points)
+    uint256 public constant DEFAULT_MAX_WITHDRAW_BPS = 500; // 5%
+
+    /// @notice Default time window for cumulative limit tracking (24 hours)
+    uint256 public constant DEFAULT_LIMIT_WINDOW_DURATION = 1 days;
+
+    /// @notice Configuration for sub-account limits
+    struct SubAccountLimits {
+        uint256 maxDepositBps;      // Maximum deposit percentage in basis points
+        uint256 maxWithdrawBps;     // Maximum withdrawal percentage in basis points
+        uint256 maxLossBps;         // Maximum portfolio value loss in basis points
+        uint256 windowDuration;     // Time window duration in seconds
+        bool isConfigured;          // Whether limits have been explicitly set
+    }
+
+    /// @notice Per-sub-account limit configuration
+    mapping(address => SubAccountLimits) public subAccountLimits;
+
+    /// @notice Portfolio value at start of execution window: subAccount => value
+    mapping(address => uint256) public executionWindowPortfolioValue;
+
+    /// @notice Window start time for executions: subAccount => timestamp
+    mapping(address => uint256) public executionWindowStart;
+
+    /// @notice Cumulative value lost in current window: subAccount => amount
+    mapping(address => uint256) public valueLostInWindow;
 
     /// @notice Per-sub-account allowed addresses: subAccount => target address => allowed
     mapping(address => mapping(address => bool)) public allowedAddresses;
 
+    /// @notice Cumulative deposits in current window: subAccount => target address => amount
+    mapping(address => mapping(address => uint256)) public depositedInWindow;
+
+    /// @notice Cumulative withdrawals in current window: subAccount => target address => amount
+    mapping(address => mapping(address => uint256)) public withdrawnInWindow;
+
+    /// @notice Window start time for deposits: subAccount => target address => timestamp
+    mapping(address => mapping(address => uint256)) public depositWindowStart;
+
+    /// @notice Window start time for withdrawals: subAccount => target address => timestamp
+    mapping(address => mapping(address => uint256)) public withdrawWindowStart;
+
+    /// @notice Safe's balance at start of deposit window: subAccount => sd address => balance
+    mapping(address => mapping(address => uint256)) public depositWindowBalance;
+
+    /// @notice Safe's shares at start of withdraw window: subAccount => target address => shares
+    mapping(address => mapping(address => uint256)) public withdrawWindowShares;
+
+    /// @notice Cumulative transfers in current window: subAccount => token address => amount
+    mapping(address => mapping(address => uint256)) public transferredInWindow;
+
+    /// @notice Window start time for transfers: subAccount => token address => timestamp
+    mapping(address => mapping(address => uint256)) public transferWindowStart;
+
+    /// @notice Safe's balance at start of transfer window: subAccount => token address => balance
+    mapping(address => mapping(address => uint256)) public transferWindowBalance;
+
     // ============ Events ============
+
+    event DepositExecuted(
+        address indexed subAccount,
+        address indexed target,
+        uint256 assets,
+        uint256 actualSharesReceived,
+        uint256 safeBalanceBefore,
+        uint256 safeBalanceAfter,
+        uint256 cumulativeInWindow,
+        uint256 percentageOfBalance,
+        uint256 timestamp
+    );
+
+    event WithdrawExecuted(
+        address indexed subAccount,
+        address indexed target,
+        uint256 assets,
+        uint256 actualSharesBurned,
+        uint256 safeSharesBefore,
+        uint256 safeSharesAfter,
+        uint256 cumulativeInWindow,
+        uint256 percentageOfPosition,
+        uint256 timestamp
+    );
 
     event RoleAssigned(address indexed member, uint16 indexed roleId, uint256 timestamp);
     event RoleRevoked(address indexed member, uint16 indexed roleId, uint256 timestamp);
+    event DepositWindowReset(address indexed subAccount, address indexed target, uint256 newWindowStart);
+    event WithdrawWindowReset(address indexed subAccount, address indexed target, uint256 newWindowStart);
+    event SubAccountLimitsSet(
+        address indexed subAccount,
+        uint256 maxDepositBps,
+        uint256 maxWithdrawBps,
+        uint256 maxLossBps,
+        uint256 windowDuration,
+        uint256 timestamp
+    );
+
+    event ProtocolExecuted(
+        address indexed subAccount,
+        address indexed target,
+        uint256 portfolioValueBefore,
+        uint256 portfolioValueAfter,
+        uint256 valueLost,
+        uint256 cumulativeLossInWindow,
+        uint256 timestamp
+    );
+
+    event ExecutionWindowReset(
+        address indexed subAccount,
+        uint256 newWindowStart,
+        uint256 portfolioValue
+    );
+
+    event OracleUpdated(address indexed oldOracle, address indexed newOracle);
+    event TrackedTokenAdded(address indexed token);
+    event TrackedTokenRemoved(address indexed token);
+    event TrackedProtocolAdded(address indexed protocol);
+    event TrackedProtocolRemoved(address indexed protocol);
+
+    event AllowedAddressesSet(
+        address indexed subAccount,
+        address[] targets,
+        bool allowed,
+        uint256 timestamp
+    );
+
+    event TransferExecuted(
+        address indexed subAccount,
+        address indexed token,
+        address indexed recipient,
+        uint256 amount,
+        uint256 safeBalanceBefore,
+        uint256 safeBalanceAfter,
+        uint256 cumulativeInWindow,
+        uint256 percentageOfBalance,
+        uint256 timestamp
+    );
+
+    event TransferWindowReset(address indexed subAccount, address indexed token, uint256 newWindowStart);
+
+    event EmergencyPaused(address indexed by, uint256 timestamp);
+    event EmergencyUnpaused(address indexed by, uint256 timestamp);
+
+    event UnusualActivity(
+        address indexed subAccount,
+        string activityType,
+        uint256 value,
+        uint256 threshold,
+        uint256 timestamp
+    );
+
+    event ApprovalExecuted(
+        address indexed subAccount,
+        address indexed token,
+        address indexed protocol,
+        uint256 amount,
+        uint256 timestamp
+    );
 
     error Unauthorized();
     error InvalidAddress();
+    error ExceedsDepositLimit();
+    error ExceedsWithdrawLimit();
     error TransactionFailed();
+    error ApprovalFailed();
+    error InsufficientSharesReceived();
+    error InsufficientAssetsReceived();
+    error ExceedsAbsoluteMaximum();
+    error OperationNotScheduled();
+    error OperationTooEarly();
+    error OperationExpired();
+    error OperationAlreadyExecuted();
+    error InvalidLimitConfiguration();
     error AddressNotAllowed();
+    error ExceedsMaxLoss();
+    error OracleNotSet();
+    error NoTrackedTokens();
+    error ApprovalNotAllowed();
+    error ApprovalExceedsLimit();
+    error ExceedsTransferLimit();
 
     modifier onlySafe() {
         if (msg.sender != address(safe)) revert Unauthorized();
@@ -72,6 +259,169 @@ contract DeFiInteractor is ReentrancyGuard, Pausable {
         emit EmergencyUnpaused(msg.sender, block.timestamp);
     }
 
+    /**
+     * @notice Add a token to track for portfolio valuation (only Safe can call)
+     * @param token The token address to track
+     */
+    function addTrackedToken(address token) external onlySafe {
+        if (token == address(0)) revert InvalidAddress();
+        if (!isTrackedToken[token]) {
+            trackedTokens.push(token);
+            isTrackedToken[token] = true;
+            emit TrackedTokenAdded(token);
+        }
+    }
+
+    /**
+     * @notice Remove a token from tracking (only Safe can call)
+     * @param token The token address to remove
+     */
+    function removeTrackedToken(address token) external onlySafe {
+        if (isTrackedToken[token]) {
+            isTrackedToken[token] = false;
+            // Remove from array
+            for (uint256 i = 0; i < trackedTokens.length; i++) {
+                if (trackedTokens[i] == token) {
+                    trackedTokens[i] = trackedTokens[trackedTokens.length - 1];
+                    trackedTokens.pop();
+                    break;
+                }
+            }
+            emit TrackedTokenRemoved(token);
+        }
+    }
+
+    /**
+     * @notice Add a protocol to track for portfolio valuation (only Safe can call)
+     * @param protocol The protocol address to track (e.g., Morpho vault address)
+     */
+    function addTrackedProtocol(address protocol) external onlySafe {
+        if (protocol == address(0)) revert InvalidAddress();
+        if (!isTrackedProtocol[protocol]) {
+            trackedProtocols.push(protocol);
+            isTrackedProtocol[protocol] = true;
+            emit TrackedProtocolAdded(protocol);
+        }
+    }
+
+    /**
+     * @notice Remove a protocol from tracking (only Safe can call)
+     * @param protocol The protocol address to remove
+     */
+    function removeTrackedProtocol(address protocol) external onlySafe {
+        if (isTrackedProtocol[protocol]) {
+            isTrackedProtocol[protocol] = false;
+            // Remove from array
+            for (uint256 i = 0; i < trackedProtocols.length; i++) {
+                if (trackedProtocols[i] == protocol) {
+                    trackedProtocols[i] = trackedProtocols[trackedProtocols.length - 1];
+                    trackedProtocols.pop();
+                    break;
+                }
+            }
+            emit TrackedProtocolRemoved(protocol);
+        }
+    }
+
+    /**
+     * @notice Get the number of tracked tokens
+     * @return count The number of tracked tokens
+     */
+    function getTrackedTokenCount() external view returns (uint256) {
+        return trackedTokens.length;
+    }
+
+    /**
+     * @notice Get the number of tracked protocols
+     * @return count The number of tracked protocols
+     */
+    function getTrackedProtocolCount() external view returns (uint256) {
+        return trackedProtocols.length;
+    }
+
+    // ============ Sub-Account Configuration ============
+
+    /**
+     * @notice Set custom limits for a sub-account (only Safe can call)
+     * @param subAccount The sub-account address to configure
+     * @param maxDepositBps Maximum deposit percentage in basis points (max 10000)
+     * @param maxWithdrawBps Maximum withdrawal percentage in basis points (max 10000)
+     * @param maxLossBps Maximum portfolio loss percentage in basis points (max 10000)
+     * @param windowDuration Time window duration in seconds (min 1 hour)
+     */
+    function setSubAccountLimits(
+        address subAccount,
+        uint256 maxDepositBps,
+        uint256 maxWithdrawBps,
+        uint256 maxLossBps,
+        uint256 windowDuration
+    ) external onlySafe {
+        if (subAccount == address(0)) revert InvalidAddress();
+        // Validate limits: BPS cannot exceed 100%, window must be at least 1 hour
+        if (maxDepositBps > 10000 || maxWithdrawBps > 10000 || maxLossBps > 10000 || windowDuration < 1 hours) {
+            revert InvalidLimitConfiguration();
+        }
+
+        subAccountLimits[subAccount] = SubAccountLimits({
+            maxDepositBps: maxDepositBps,
+            maxWithdrawBps: maxWithdrawBps,
+            maxLossBps: maxLossBps,
+            windowDuration: windowDuration,
+            isConfigured: true
+        });
+
+        emit SubAccountLimitsSet(
+            subAccount,
+            maxDepositBps,
+            maxWithdrawBps,
+            maxLossBps,
+            windowDuration,
+            block.timestamp
+        );
+    }
+
+    /**
+     * @notice Get the effective limits for a sub-account
+     * @param subAccount The sub-account address
+     * @return maxDepositBps The maximum deposit percentage in basis points
+     * @return maxWithdrawBps The maximum withdrawal percentage in basis points
+     * @return maxLossBps The maximum portfolio loss percentage in basis points
+     * @return windowDuration The time window duration in seconds
+     */
+    function getSubAccountLimits(address subAccount) public view returns (
+        uint256 maxDepositBps,
+        uint256 maxWithdrawBps,
+        uint256 maxLossBps,
+        uint256 windowDuration
+    ) {
+        SubAccountLimits memory limits = subAccountLimits[subAccount];
+        if (limits.isConfigured) {
+            return (limits.maxDepositBps, limits.maxWithdrawBps, limits.maxLossBps, limits.windowDuration);
+        }
+        // Return defaults if not configured
+        return (DEFAULT_MAX_DEPOSIT_BPS, DEFAULT_MAX_WITHDRAW_BPS, DEFAULT_MAX_LOSS_BPS, DEFAULT_LIMIT_WINDOW_DURATION);
+    }
+
+    /**
+     * @notice Set allowed addresses for a sub-account (only Safe can call)
+     * @param subAccount The sub-account address to configure
+     * @param targets Array of target addresses to allow/disallow
+     * @param allowed Whether to allow or disallow these addresses
+     */
+    function setAllowedAddresses(
+        address subAccount,
+        address[] calldata targets,
+        bool allowed
+    ) external onlySafe {
+        if (subAccount == address(0)) revert InvalidAddress();
+
+        for (uint256 i = 0; i < targets.length; i++) {
+            if (targets[i] == address(0)) revert InvalidAddress();
+            allowedAddresses[subAccount][targets[i]] = allowed;
+        }
+
+        emit AllowedAddressesSet(subAccount, targets, allowed, block.timestamp);
+    }
 
     // ============ Core Functions with Enhanced Security ============
 
