@@ -45,7 +45,8 @@ import { zircuit } from 'viem/chains'
 // ============ Configuration ============
 
 const ZIRCUIT_RPC_URL = process.env.ZIRCUIT_RPC_URL || 'https://zircuit1-mainnet.p2pify.com/'
-const ENTRYPOINT_V08 = '0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108'
+// EntryPoint v0.6 (v0.8 not yet deployed on Zircuit)
+const ENTRYPOINT_V06 = '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789'
 const BUNDLER_RPC_URL = process.env.BUNDLER_RPC_URL || ZIRCUIT_RPC_URL // Fallback to regular RPC
 
 // Contract addresses - replace with your deployed contracts
@@ -433,7 +434,7 @@ async function main() {
   // Step 5: Get nonce from EntryPoint
   console.log('\nStep 5: Getting nonce from EntryPoint...')
   const nonce = await publicClient.readContract({
-    address: ENTRYPOINT_V08 as Address,
+    address: ENTRYPOINT_V06 as Address,
     abi: [{
       inputs: [
         { name: 'sender', type: 'address' },
@@ -517,7 +518,7 @@ async function main() {
 
   // Step 9: Sign UserOperation
   console.log('\nStep 9: Signing UserOperation...')
-  const userOpHash = getUserOpHash(userOp, ENTRYPOINT_V08 as Address, zircuit.id)
+  const userOpHash = getUserOpHash(userOp, ENTRYPOINT_V06 as Address, zircuit.id)
   console.log(`  UserOp hash: ${userOpHash}`)
 
   const userOpSignature = await subAccount.signMessage({
@@ -553,7 +554,7 @@ async function main() {
             paymasterAndData: userOp.paymasterAndData,
             signature: userOp.signature
           },
-          ENTRYPOINT_V08
+          ENTRYPOINT_V06
         ]
       })
     })

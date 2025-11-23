@@ -44,6 +44,15 @@ deploy-sepolia:
 		--private-key $(DEPLOYER_PRIVATE_KEY) \
 		-vvvv
 
+# Deploy paymaster
+deploy-paymaster:
+	@echo "Deploying to Sepolia..."
+	forge script script/DeployPaymaster.s.sol \
+		--rpc-url $(SEPOLIA_RPC_URL) \
+		--broadcast \
+		--private-key $(DEPLOYER_PRIVATE_KEY) \
+		-vvvv
+
 # Setup roles and permissions
 setup-roles:
 	@echo "Setting up roles..."

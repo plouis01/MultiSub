@@ -31,8 +31,9 @@ import {IEntryPoint} from "@openzeppelin/contracts/interfaces/draft-IERC4337.sol
  * forge script script/DeployPaymaster.s.sol:DeployPaymaster --rpc-url sepolia --broadcast --verify
  */
 contract DeployPaymaster is Script {
-    // ERC-4337 EntryPoint v0.8.0 (canonical address)
-    address constant ENTRYPOINT_V08 = 0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108;
+    // ERC-4337 EntryPoint v0.6.0 (canonical address)
+    // Note: v0.8.0 (0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108) may not be deployed on Zircuit yet
+    address constant ENTRYPOINT_V06 = 0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789;
 
     // Configuration (can be overridden by environment variables)
     uint256 constant MAX_GAS_PER_OPERATION = 1_000_000; // 1M gas
@@ -48,7 +49,7 @@ contract DeployPaymaster is Script {
         console.log("=== MultiSub ERC-4337 Paymaster Deployment ===");
         console.log("Safe Address:", safeAddress);
         console.log("DeFi Module Address:", defiModuleAddress);
-        console.log("EntryPoint:", ENTRYPOINT_V08);
+        console.log("EntryPoint:", ENTRYPOINT_V06);
         console.log("Paymaster Signer:", paymasterSigner);
         console.log("Paymaster Owner:", paymasterOwner);
         console.log("Initial Deposit:", initialDeposit);
@@ -60,14 +61,14 @@ contract DeployPaymaster is Script {
         console.log("\n1. Deploying SafeERC4337Account...");
         SafeERC4337Account safeAccount = new SafeERC4337Account(
             safeAddress,
-            ENTRYPOINT_V08
+            ENTRYPOINT_V06
         );
         console.log("SafeERC4337Account deployed at:", address(safeAccount));
 
         // 2. Deploy MultiSubPaymaster
         console.log("\n2. Deploying MultiSubPaymaster...");
         MultiSubPaymaster paymaster = new MultiSubPaymaster(
-            ENTRYPOINT_V08,
+            ENTRYPOINT_V06,
             defiModuleAddress,
             paymasterSigner,
             paymasterOwner,
