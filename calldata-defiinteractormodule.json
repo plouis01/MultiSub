@@ -22,15 +22,15 @@
   "display": {
     "formats": {
       "pause()": {
-        "intent": "Pause all operations (only owner can call)",
+        "intent": "Pause all operations (only owner)",
         "fields": []
       },
       "unpause()": {
-        "intent": "Unpause all operations (only owner can call)",
+        "intent": "Unpause all operations (only owner)",
         "fields": []
       },
       "grantRole(address,uint16)": {
-        "intent": "Grant a role to a sub-account (only owner can do this)",
+        "intent": "Grant a role to a sub-account (only owner)",
         "fields": [
           {
             "path": "member",
@@ -52,10 +52,10 @@
             "format": "raw"
           }
         ],
-        "interpolatedIntent": "Grant a role to a sub-account (only owner can do this)"
+        "interpolatedIntent": "Grant a role to a sub-account (only owner)"
       },
       "revokeRole(address,uint16)": {
-        "intent": "Revoke a role from a sub-account (only owner can do this)",
+        "intent": "Revoke a role from a sub-account (only owner)",
         "fields": [
           {
             "path": "member",
@@ -77,7 +77,7 @@
             "format": "raw"
           }
         ],
-        "interpolatedIntent": "Revoke a role from a sub-account (only owner can do this)"
+        "interpolatedIntent": "Revoke a role from a sub-account (only owner)"
       },
       "updateSafeValue(uint256)": {
         "intent": "Update the USD value for the Safe",
