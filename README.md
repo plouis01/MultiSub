@@ -86,61 +86,12 @@ forge script script/SetupDeFiModule.s.sol --broadcast
 - Instant role revocation
 - Unusual activity detection
 
-## Usage
-
-### Owner (Safe) Operations
-
-```bash
-# Grant roles
-cast send $MODULE "grantRole(address,uint16)" $SUB_ACCOUNT 1
-
-# Set limits (15% deposit, 10% withdraw, 8% max loss, 48h window)
-cast send $MODULE "setSubAccountLimits(address,uint256,uint256,uint256,uint256)" \
-  $SUB_ACCOUNT 1500 1000 800 172800
-
-# Configure allowed protocols
-cast send $MODULE "setAllowedAddresses(address,address[],bool)" \
-  $SUB_ACCOUNT "[$MORPHO_VAULT,$AAVE_POOL]" true
-```
-
-### Sub-Account Operations
-
-```bash
-# Approve token
-cast send $MODULE "approveProtocol(address,address,uint256)" \
-  $USDC $MORPHO_VAULT 1000000000
-
-# Execute protocol operation
-DATA=$(cast calldata "deposit(uint256,address)" 500000000 $SAFE)
-cast send $MODULE "executeOnProtocol(address,bytes)" $MORPHO_VAULT $DATA
-
-# Transfer tokens
-cast send $MODULE "transferToken(address,address,uint256)" \
-  $USDC $RECIPIENT 100000000
-```
-
 ## Default Limits
 
 If not configured, sub-accounts use:
 - **Max transfer**: 1% per 24 hours
 - **Max Loss**: 5% per 24 hours
 - **Window**: 24 hours (86400 seconds)
-
-## File Structure
-
-```
-src/
-├── base/Module.sol               # Base Zodiac module
-├── DeFiInteractorModule.sol      # Main module (18.5 KB)
-└── interfaces/                   # Interface files
-
-script/
-├── DeployDeFiModule.s.sol       # Deploy
-└── SetupDeFiModule.s.sol        # Configure
-
-test/
-└── DeFiInteractorModule.t.sol
-```
 
 ## Testing
 
@@ -154,13 +105,6 @@ forge test --gas-report
 # Specific test with verbosity
 forge test --match-test testGrantRole -vvv
 ```
-
-## Use Cases
-
-- **Individual Users**: Mobile DeFi with cold storage security
-- **Family Wallets**: Each member with custom limits
-- **DAOs**: Delegate treasury management with controls
-- **Institutions**: Operational DeFi with compliance
 
 ## Security
 
@@ -178,20 +122,13 @@ The **DeFiInteractorModule** includes integrated Safe value monitoring powered b
 ### Safe Value Monitoring
 
 The module automatically tracks and stores the USD value of its associated Safe:
-- Runs every 30 seconds (configurable)
+- Runs every hours (configurable)
 - Fetches token balances from the Safe (ERC20 + DeFi positions)
 - Supports Aave aTokens, Morpho vaults, Uniswap LP, and 100+ major tokens
 - Gets USD prices from Chainlink price feeds
 - Calculates total portfolio value in USD
 - Stores value on-chain via signed Chainlink reports
 - Queryable by any smart contract
-
-**Key Features:**
-- Single contract deployment (module + value storage)
-- Module knows its Safe via `avatar()` property
-- Authorized Chainlink updater only
-- Staleness checks included
-- Event logging for all updates
 
 **Implementation:**
 - `src/DeFiInteractorModule.sol` - Module with integrated value storage
@@ -203,21 +140,6 @@ The module automatically tracks and stores the USD value of its associated Safe:
 - Treasury value tracking
 - Automated DeFi integrations based on Safe value
 - Compliance and reporting
-
-**Quick Deploy:**
-```bash
-# Deploy module with Chainlink updater
-export SAFE_ADDRESS=0xYourSafe
-export AUTHORIZED_UPDATER=0xChainlinkCREProxy
-forge script script/DeployDeFiModule.s.sol --broadcast
-
-# Query Safe value
-cast call MODULE_ADDRESS "getSafeValue()(uint256,uint256,uint256)"
-
-# Query multiple token balances (batch query)
-cast call MODULE_ADDRESS "getTokenBalances(address[])(uint256[])" \
-  "[0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238,0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14]"
-```
 
 ## Resources
 
