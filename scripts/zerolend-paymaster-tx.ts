@@ -48,6 +48,7 @@ const ZIRCUIT_RPC_URL = process.env.ZIRCUIT_RPC_URL || 'https://zircuit1-mainnet
 // EntryPoint v0.6 (v0.8 not yet deployed on Zircuit)
 const ENTRYPOINT_V06 = '0x5FF137D4b0FDCD49DcA30c7CF57E578a026d2789'
 const BUNDLER_RPC_URL = process.env.BUNDLER_RPC_URL || ZIRCUIT_RPC_URL // Fallback to regular RPC
+const USE_INTERNAL_BUNDLER = process.env.USE_INTERNAL_BUNDLER === 'true' // Set to 'true' to act as bundler
 
 // Contract addresses - replace with your deployed contracts
 const SAFE_ADDRESS = process.env.SAFE_ADDRESS as Address
@@ -62,6 +63,7 @@ const WETH_ADDRESS = '0x4200000000000000000000000000000000000006' as Address
 // Private keys
 const SUB_ACCOUNT_KEY = process.env.SUB_ACCOUNT_PRIVATE_KEY as Hex
 const PAYMASTER_SIGNER_KEY = process.env.PAYMASTER_SIGNER_PRIVATE_KEY as Hex
+const BUNDLER_PRIVATE_KEY = process.env.BUNDLER_PRIVATE_KEY as Hex | undefined // Only needed if USE_INTERNAL_BUNDLER=true
 
 // Transaction parameters
 const SUPPLY_AMOUNT = parseEther('0.001') // 0.005 WETH
@@ -133,6 +135,47 @@ const ERC20_ABI = [
     name: 'balanceOf',
     outputs: [{ name: '', type: 'uint256' }],
     stateMutability: 'view',
+    type: 'function'
+  }
+] as const
+
+const ENTRYPOINT_HANDLE_OPS_ABI = [
+  {
+    inputs: [
+      {
+        components: [
+          { name: 'sender', type: 'address' },
+          { name: 'nonce', type: 'uint256' },
+          { name: 'initCode', type: 'bytes' },
+          { name: 'callData', type: 'bytes' },
+          { name: 'accountGasLimits', type: 'bytes32' },
+          { name: 'preVerificationGas', type: 'uint256' },
+          { name: 'gasFees', type: 'bytes32' },
+          { name: 'paymasterAndData', type: 'bytes' },
+          { name: 'signature', type: 'bytes' }
+        ],
+        name: 'ops',
+        type: 'tuple[]'
+      },
+      { name: 'beneficiary', type: 'address' }
+    ],
+    name: 'handleOps',
+    outputs: [],
+    stateMutability: 'nonpayable',
+    type: 'function'
+  }
+] as const
+
+const SAFE_ERC4337_ACCOUNT_ABI = [
+  {
+    inputs: [
+      { name: 'dest', type: 'address' },
+      { name: 'value', type: 'uint256' },
+      { name: 'func', type: 'bytes' }
+    ],
+    name: 'execute',
+    outputs: [],
+    stateMutability: 'nonpayable',
     type: 'function'
   }
 ] as const
@@ -431,6 +474,15 @@ async function main() {
   })
   console.log(`  Module call data: ${moduleCallData.slice(0, 66)}...`)
 
+  // Step 4.5: Wrap in Safe ERC4337 account execute call
+  console.log('\nStep 4.5: Wrapping in Safe ERC4337 execute call...')
+  const safeCallData = encodeFunctionData({
+    abi: SAFE_ERC4337_ACCOUNT_ABI,
+    functionName: 'execute',
+    args: [DEFI_MODULE_ADDRESS, BigInt(0), moduleCallData]
+  })
+  console.log(`  Safe call data: ${safeCallData.slice(0, 66)}...`)
+
   // Step 5: Get nonce from EntryPoint
   console.log('\nStep 5: Getting nonce from EntryPoint...')
   const nonce = await publicClient.readContract({
@@ -488,7 +540,7 @@ async function main() {
     sender: SAFE_ERC4337_ACCOUNT,
     nonce,
     initCode: '0x',
-    callData: moduleCallData,
+    callData: safeCallData,
     accountGasLimits: packAccountGasLimits(verificationGasLimit, callGasLimit),
     preVerificationGas,
     gasFees: packGasFees(maxPriorityFeePerGas, maxFeePerGas),
@@ -521,19 +573,106 @@ async function main() {
   const userOpHash = getUserOpHash(userOp, ENTRYPOINT_V06 as Address, zircuit.id)
   console.log(`  UserOp hash: ${userOpHash}`)
 
-  const userOpSignature = await subAccount.signMessage({
-    message: { raw: userOpHash }
+  // The Safe ERC4337 account calls toEthSignedMessageHash() before recovery:
+  // bytes32 hash = userOpHash.toEthSignedMessageHash();
+  // address recovered = hash.recover(userOp.signature);
+  //
+  // So we need to sign the PREFIXED hash, not the raw userOpHash
+  // This way when the contract adds the prefix and recovers, it gets the correct address
+  const prefix = toHex('\x19Ethereum Signed Message:\n32')
+  const prefixedHash = keccak256(concat([prefix as `0x${string}`, userOpHash as `0x${string}`]))
+
+  const userOpSignature = await subAccount.sign({
+    hash: prefixedHash
   })
   userOp.signature = userOpSignature
   console.log(`  User signature: ${userOpSignature.slice(0, 66)}...`)
 
-  // Step 10: Submit UserOperation to bundler
-  console.log('\nStep 10: Submitting UserOperation to bundler...')
-  console.log(`  Bundler RPC: ${BUNDLER_RPC_URL}`)
+  // Step 10: Submit UserOperation
+  if (USE_INTERNAL_BUNDLER) {
+    // Act as bundler - submit directly to EntryPoint
+    console.log('\n=== Step 10: Acting as Internal Bundler ===')
 
-  try {
-    // Send via eth_sendUserOperation JSON-RPC call
-    const response = await fetch(BUNDLER_RPC_URL, {
+    if (!BUNDLER_PRIVATE_KEY) {
+      console.error('Error: BUNDLER_PRIVATE_KEY is required when USE_INTERNAL_BUNDLER=true')
+      process.exit(1)
+    }
+
+    const bundlerAccount = privateKeyToAccount(BUNDLER_PRIVATE_KEY)
+    console.log(`  Bundler account: ${bundlerAccount.address}`)
+
+    // Check bundler has ETH
+    const bundlerBalance = await publicClient.getBalance({ address: bundlerAccount.address })
+    console.log(`  Bundler ETH balance: ${bundlerBalance} wei (${Number(bundlerBalance) / 1e18} ETH)`)
+
+    if (bundlerBalance < parseEther('0.001')) {
+      console.error('⚠️  Warning: Bundler has low ETH balance. Transaction may fail.')
+    }
+
+    const bundlerWallet = createWalletClient({
+      account: bundlerAccount,
+      chain: zircuit,
+      transport: http(ZIRCUIT_RPC_URL)
+    })
+
+    try {
+      console.log('  Submitting bundle to EntryPoint...')
+      const hash = await bundlerWallet.writeContract({
+        address: ENTRYPOINT_V06 as Address,
+        abi: ENTRYPOINT_HANDLE_OPS_ABI,
+        functionName: 'handleOps',
+        args: [
+          [{
+            sender: userOp.sender,
+            nonce: userOp.nonce,
+            initCode: userOp.initCode,
+            callData: userOp.callData,
+            accountGasLimits: userOp.accountGasLimits,
+            preVerificationGas: userOp.preVerificationGas,
+            gasFees: userOp.gasFees,
+            paymasterAndData: userOp.paymasterAndData,
+            signature: userOp.signature
+          }],
+          bundlerAccount.address // Beneficiary receives refunds
+        ]
+      })
+
+      console.log(`  ✓ Bundle transaction submitted: ${hash}`)
+      console.log(`  Waiting for confirmation...`)
+
+      const receipt = await publicClient.waitForTransactionReceipt({ hash })
+
+      if (receipt.status === 'success') {
+        console.log(`\n=== Transaction Successful! ===`)
+        console.log(`  Transaction hash: ${receipt.transactionHash}`)
+        console.log(`  Block number: ${receipt.blockNumber}`)
+        console.log(`  Gas used: ${receipt.gasUsed}`)
+
+        // Check new WETH balance
+        const newWethBalance = await publicClient.readContract({
+          address: WETH_ADDRESS,
+          abi: ERC20_ABI,
+          functionName: 'balanceOf',
+          args: [SAFE_ADDRESS]
+        })
+        console.log(`\n  New Safe WETH balance: ${newWethBalance} wei (${Number(newWethBalance) / 1e18} WETH)`)
+        console.log(`  Difference: ${wethBalance - newWethBalance} wei (${Number(wethBalance - newWethBalance) / 1e18} WETH)`)
+      } else {
+        console.error(`\n  ✗ Transaction failed!`)
+        process.exit(1)
+      }
+    } catch (error) {
+      console.error('\n  Error submitting bundle:', error)
+      throw error
+    }
+  } else {
+    // Use external bundler
+    console.log('\nStep 10: Submitting UserOperation to bundler...')
+    console.log(`  Bundler RPC: ${BUNDLER_RPC_URL}`)
+
+    try {
+      // Send via eth_sendUserOperation JSON-RPC call
+      const response = await fetch(BUNDLER_RPC_URL, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -625,23 +764,24 @@ async function main() {
       console.error('\n  Failed to get receipt after maximum attempts')
     }
 
-  } catch (error) {
-    console.error('\n  Error submitting UserOperation:', error)
+    } catch (error) {
+      console.error('\n  Error submitting UserOperation:', error)
 
-    // Fallback: Display the UserOperation for manual submission
-    console.log('\n=== UserOperation (for manual submission) ===')
-    console.log(JSON.stringify({
-      sender: userOp.sender,
-      nonce: `0x${userOp.nonce.toString(16)}`,
-      initCode: userOp.initCode,
-      callData: userOp.callData,
-      accountGasLimits: userOp.accountGasLimits,
-      preVerificationGas: `0x${userOp.preVerificationGas.toString(16)}`,
-      gasFees: userOp.gasFees,
-      paymasterAndData: userOp.paymasterAndData,
-      signature: userOp.signature
-    }, null, 2))
-  }
+      // Fallback: Display the UserOperation for manual submission
+      console.log('\n=== UserOperation (for manual submission) ===')
+      console.log(JSON.stringify({
+        sender: userOp.sender,
+        nonce: `0x${userOp.nonce.toString(16)}`,
+        initCode: userOp.initCode,
+        callData: userOp.callData,
+        accountGasLimits: userOp.accountGasLimits,
+        preVerificationGas: `0x${userOp.preVerificationGas.toString(16)}`,
+        gasFees: userOp.gasFees,
+        paymasterAndData: userOp.paymasterAndData,
+        signature: userOp.signature
+      }, null, 2))
+    }
+  } // End of external bundler else block
 
   console.log('\n=== Script Complete ===')
 }

@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "zerolend-tx": "tsx zerolend-paymaster-tx.ts",
-    "zerolend-withdraw": "tsx zerolend-withdraw-tx.ts"
+    "zerolend-tx-bundler": "USE_INTERNAL_BUNDLER=true tsx zerolend-paymaster-tx.ts",
+    "zerolend-withdraw": "tsx zerolend-withdraw-tx.ts",
+    "zerolend-withdraw-bundler": "USE_INTERNAL_BUNDLER=true tsx zerolend-withdraw-tx.ts"
   },
   "dependencies": {
     "viem": "^2.21.0",
