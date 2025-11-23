@@ -16,7 +16,10 @@
  * - Sub-account has DEFI_EXECUTE_ROLE in DeFiInteractorModule
  * - Paymaster is funded with ETH
  * - ZeroLend Pool is whitelisted for sub-account
- * - WETH is approved for ZeroLend Pool
+ * - Sub-account has ETH for gas (for WETH approval if needed)
+ * - Safe has WETH balance
+ *
+ * Note: WETH approval is handled automatically by the script!
  */
 
 import 'dotenv/config'
@@ -60,7 +63,7 @@ const SUB_ACCOUNT_KEY = process.env.SUB_ACCOUNT_PRIVATE_KEY as Hex
 const PAYMASTER_SIGNER_KEY = process.env.PAYMASTER_SIGNER_PRIVATE_KEY as Hex
 
 // Transaction parameters
-const SUPPLY_AMOUNT = parseEther('0.001') // 0.001 WETH
+const SUPPLY_AMOUNT = parseEther('0.005') // 0.005 WETH
 
 // ============ ABIs ============
 
@@ -87,6 +90,17 @@ const DEFI_MODULE_ABI = [
     ],
     name: 'executeOnProtocol',
     outputs: [{ name: 'result', type: 'bytes' }],
+    stateMutability: 'nonpayable',
+    type: 'function'
+  },
+  {
+    inputs: [
+      { name: 'token', type: 'address' },
+      { name: 'target', type: 'address' },
+      { name: 'amount', type: 'uint256' }
+    ],
+    name: 'approveProtocol',
+    outputs: [],
     stateMutability: 'nonpayable',
     type: 'function'
   }
@@ -327,7 +341,7 @@ async function main() {
     process.exit(1)
   }
 
-  // Step 2: Check WETH allowance for ZeroLend Pool
+  // Step 2: Check and approve WETH allowance for ZeroLend Pool
   console.log('\nStep 2: Checking WETH allowance...')
   const allowance = await publicClient.readContract({
     address: WETH_ADDRESS,
@@ -335,11 +349,62 @@ async function main() {
     functionName: 'allowance',
     args: [SAFE_ADDRESS, ZEROLEND_POOL]
   })
-  console.log(`  Current allowance: ${allowance} wei`)
+  console.log(`  Current allowance: ${allowance} wei (${Number(allowance) / 1e18} WETH)`)
 
   if (allowance < SUPPLY_AMOUNT) {
-    console.log(`  Warning: Insufficient allowance. You may need to approve WETH first.`)
-    console.log(`  Use approveProtocol() in DeFiInteractorModule to approve WETH for ZeroLend.`)
+    console.log(`  Insufficient allowance! Approving WETH for ZeroLend Pool...`)
+
+    const approvalAmount = SUPPLY_AMOUNT
+    console.log(`  Approval amount: ${approvalAmount} wei (${Number(approvalAmount) / 1e18} WETH)`)
+
+    // Create wallet client for sending transaction
+    const walletClient = createWalletClient({
+      account: subAccount,
+      chain: zircuit,
+      transport: http(ZIRCUIT_RPC_URL)
+    })
+
+    try {
+      // Call approveProtocol on DeFiInteractorModule
+      const hash = await walletClient.writeContract({
+        address: DEFI_MODULE_ADDRESS,
+        abi: DEFI_MODULE_ABI,
+        functionName: 'approveProtocol',
+        args: [WETH_ADDRESS, ZEROLEND_POOL, approvalAmount]
+      })
+
+      console.log(`  Approval transaction sent: ${hash}`)
+      console.log(`  Waiting for confirmation...`)
+
+      // Wait for transaction receipt
+      const receipt = await publicClient.waitForTransactionReceipt({ hash })
+
+      if (receipt.status === 'success') {
+        console.log(`  ✓ Approval successful! (Block: ${receipt.blockNumber})`)
+      } else {
+        console.error(`  ✗ Approval failed!`)
+        process.exit(1)
+      }
+
+      // Verify new allowance
+      const newAllowance = await publicClient.readContract({
+        address: WETH_ADDRESS,
+        abi: ERC20_ABI,
+        functionName: 'allowance',
+        args: [SAFE_ADDRESS, ZEROLEND_POOL]
+      })
+      console.log(`  New allowance: ${newAllowance} wei (${Number(newAllowance) / 1e18} WETH)`)
+
+    } catch (error) {
+      console.error(`  Error approving WETH:`, error)
+      console.error(`  Please ensure:`)
+      console.error(`    - Sub-account has DEFI_EXECUTE_ROLE`)
+      console.error(`    - ZeroLend Pool is whitelisted for sub-account`)
+      console.error(`    - Sub-account has ETH for gas`)
+      process.exit(1)
+    }
+  } else {
+    console.log(`  ✓ Sufficient allowance already exists`)
   }
 
   // Step 3: Build the ZeroLend supply call

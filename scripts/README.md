@@ -29,6 +29,7 @@ Before running the script, ensure:
 3. **WETH is ready:**
    - Safe has WETH balance (address: `0x4200000000000000000000000000000000000006`)
    - WETH approval will be handled automatically by the script if needed
+   - Sub-account needs ETH for gas (for approval transaction if needed)
 
 4. **Environment variables are set:**
    - Copy `.env.example` to `.env` and fill in all values
@@ -68,7 +69,7 @@ ts-node zerolend-paymaster-tx.ts
 
 1. **Validates configuration** - Checks all required environment variables
 2. **Checks WETH balance** - Ensures the Safe has enough WETH
-3. **Checks and approves WETH** - Automatically approves WETH for ZeroLend if needed using `approveProtocol()`
+3. **Checks and approves WETH** - Automatically approves WETH for ZeroLend if needed (approves supply amount)
 4. **Builds the supply call** - Encodes the ZeroLend `supply()` function call
 5. **Wraps in module call** - Encodes the DeFi Module `executeOnProtocol()` call
 6. **Gets nonce** - Fetches the current nonce from EntryPoint
@@ -114,11 +115,13 @@ The paymaster must have sufficient ETH deposited in the EntryPoint to cover gas 
 - Ensure the Safe has enough WETH
 - WETH address on Zircuit: `0x4200000000000000000000000000000000000006`
 
-**"Approval failed" or "Error approving WETH"**
-- The script automatically approves WETH if needed
-- Ensure sub-account has ETH for gas to pay for the approval transaction
-- Verify sub-account has `DEFI_EXECUTE_ROLE` in DeFiInteractorModule
-- Verify ZeroLend Pool is whitelisted for the sub-account
+**"Error approving WETH" or "Approval failed"**
+- The script automatically approves WETH if insufficient allowance is detected
+- This error occurs during the automatic approval process
+- Ensure:
+  - Sub-account has `DEFI_EXECUTE_ROLE` in DeFiInteractorModule
+  - ZeroLend Pool (`0x2774C8B95CaB474D0d21943d83b9322Fb1cE9cF5`) is whitelisted for the sub-account
+  - Sub-account has ETH for gas to pay for the approval transaction
 
 **"SubAccountNotAuthorized"**
 - Grant `DEFI_EXECUTE_ROLE` to the sub-account
