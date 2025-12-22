@@ -7,19 +7,17 @@ import {Module} from "../../src/base/Module.sol";
 import {MockSafe} from "../mocks/MockSafe.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockProtocol} from "../mocks/MockProtocol.sol";
-import {MockChainlinkPriceFeed} from "../mocks/MockChainlinkPriceFeed.sol";
 import {MockParser} from "../mocks/MockParser.sol";
 
 /**
  * @title DeFiInteractorModuleBase
- * @notice Base test contract with shared setup for DeFiInteractorModule tests
+ * @notice Base test contract with shared setup for DeFiInteractorModule tests (Claim-Only)
  */
 abstract contract DeFiInteractorModuleBase is Test {
     DeFiInteractorModule public module;
     MockSafe public safe;
     MockERC20 public token;
     MockProtocol public protocol;
-    MockChainlinkPriceFeed public priceFeed;
     MockParser public parser;
 
     address public owner;
@@ -27,10 +25,8 @@ abstract contract DeFiInteractorModuleBase is Test {
     address public subAccount2;
     address public recipient;
 
-    // Selectors for testing
-    bytes4 constant DEPOSIT_SELECTOR = bytes4(keccak256("deposit(uint256,address)"));
-    bytes4 constant WITHDRAW_SELECTOR = bytes4(keccak256("withdraw(uint256,address)"));
-    bytes4 constant APPROVE_SELECTOR = bytes4(keccak256("approve(address,uint256)"));
+    // Selectors for testing (Claim-Only version)
+    bytes4 constant CLAIM_SELECTOR = bytes4(keccak256("claim(address)"));
 
     function setUp() public virtual {
         owner = address(this);
@@ -43,15 +39,12 @@ abstract contract DeFiInteractorModuleBase is Test {
         owners[0] = owner;
         safe = new MockSafe(owners, 1);
 
-        // Deploy module (Safe is avatar, THIS is owner for testing, THIS is also authorized oracle)
-        module = new DeFiInteractorModule(address(safe), owner, owner);
+        // Deploy module (Safe is avatar, THIS is owner for testing)
+        module = new DeFiInteractorModule(address(safe), owner);
 
         // Deploy mock token and protocol
         token = new MockERC20();
         protocol = new MockProtocol();
-
-        // Deploy mock Chainlink price feed ($1.00 with 8 decimals)
-        priceFeed = new MockChainlinkPriceFeed(1_00000000, 8);
 
         // Deploy mock parser (configured for our token)
         parser = new MockParser(address(token));
@@ -62,18 +55,10 @@ abstract contract DeFiInteractorModuleBase is Test {
         // Transfer tokens to Safe
         token.transfer(address(safe), 100000 * 10**18);
 
-        // Set initial Safe value
-        module.updateSafeValue(1_000_000 * 10**18);
+        // Register selectors (only CLAIM allowed in claim-only version)
+        module.registerSelector(CLAIM_SELECTOR, DeFiInteractorModule.OperationType.CLAIM);
 
-        // Set price feed for token
-        module.setTokenPriceFeed(address(token), address(priceFeed));
-
-        // Register selectors
-        module.registerSelector(DEPOSIT_SELECTOR, DeFiInteractorModule.OperationType.DEPOSIT);
-        module.registerSelector(WITHDRAW_SELECTOR, DeFiInteractorModule.OperationType.WITHDRAW);
-        module.registerSelector(APPROVE_SELECTOR, DeFiInteractorModule.OperationType.APPROVE);
-
-        // Register parser for protocol (required for spending check operations)
+        // Register parser for protocol
         module.registerParser(address(protocol), address(parser));
     }
 }
