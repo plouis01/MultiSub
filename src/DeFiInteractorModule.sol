@@ -200,11 +200,13 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
         bool allowed
     ) external onlyOwner {
         if (subAccount == address(0)) revert InvalidAddress();
-        for (uint256 i = 0; i < targets.length; i++) {
+        uint256 len = targets.length;
+        for (uint256 i = 0; i < len; ) {
             // Prevent whitelisting Safe or Module as targets
             if (targets[i] == avatar || targets[i] == address(this)) revert CannotWhitelistCoreAddress(targets[i]);
             if (targets[i] == address(0)) revert InvalidAddress();
             allowedAddresses[subAccount][targets[i]] = allowed;
+            unchecked { ++i; }
         }
         emit AllowedAddressesSet(subAccount, targets, allowed);
     }
@@ -289,10 +291,12 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
         // 3. Get output tokens from parser
         address[] memory tokensOut = parser.extractOutputTokens(target, data);
         uint256[] memory balancesBefore = new uint256[](tokensOut.length);
-        for (uint256 i = 0; i < tokensOut.length; i++) {
+        uint256 len = tokensOut.length;
+        for (uint256 i = 0; i < len; ) {
             if (tokensOut[i] != address(0)) {
                 balancesBefore[i] = _getTokenBalance(tokensOut[i]);
             }
+            unchecked { ++i; }
         }
 
         // 4. Execute
@@ -301,11 +305,12 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
 
         // 5. Calculate received amounts
         uint256[] memory amountsOut = new uint256[](tokensOut.length);
-        for (uint256 i = 0; i < tokensOut.length; i++) {
+        for (uint256 i = 0; i < len; ) {
             if (tokensOut[i] != address(0)) {
                 uint256 balanceAfter = _getTokenBalance(tokensOut[i]);
                 amountsOut[i] = balanceAfter >= balancesBefore[i] ? balanceAfter - balancesBefore[i] : 0;
             }
+            unchecked { ++i; }
         }
 
         // 6. Emit event
