@@ -166,7 +166,7 @@ contract UniswapV3ParserTest is Test {
         bytes memory collectData = abi.encodeWithSelector(parser.COLLECT_SELECTOR());
         bytes memory unknownData = abi.encodeWithSelector(bytes4(0xdeadbeef));
 
-        assertEq(parser.getOperationType(collectData), 4, "Collect should be CLAIM (4)");
+        assertEq(parser.getOperationType(collectData), 1, "Collect should be CLAIM (1)");
         assertEq(parser.getOperationType(unknownData), 0, "Unknown should return 0");
     }
 

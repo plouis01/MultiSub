@@ -168,7 +168,7 @@ contract MerklParserTest is Test {
         bytes memory claimData = abi.encodeWithSelector(parser.CLAIM_SELECTOR());
         bytes memory unknownData = abi.encodeWithSelector(bytes4(0xdeadbeef));
 
-        assertEq(parser.getOperationType(claimData), 4, "Claim should be operation type 4");
+        assertEq(parser.getOperationType(claimData), 1, "Claim should be operation type 1");
         assertEq(parser.getOperationType(unknownData), 0, "Unknown selector should return 0");
     }
 

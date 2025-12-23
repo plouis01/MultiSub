@@ -224,11 +224,11 @@ contract AaveV3ParserTest is Test {
         bytes memory claimAllOnBehalfData = abi.encodeWithSelector(parser.CLAIM_ALL_ON_BEHALF_SELECTOR());
         bytes memory unknownData = abi.encodeWithSelector(bytes4(0xdeadbeef));
 
-        // CLAIM operations
-        assertEq(parser.getOperationType(claimRewardsData), 4, "ClaimRewards should be CLAIM (4)");
-        assertEq(parser.getOperationType(claimOnBehalfData), 4, "ClaimRewardsOnBehalf should be CLAIM (4)");
-        assertEq(parser.getOperationType(claimAllData), 4, "ClaimAllRewards should be CLAIM (4)");
-        assertEq(parser.getOperationType(claimAllOnBehalfData), 4, "ClaimAllOnBehalf should be CLAIM (4)");
+        // CLAIM operations (enum value 1)
+        assertEq(parser.getOperationType(claimRewardsData), 1, "ClaimRewards should be CLAIM (1)");
+        assertEq(parser.getOperationType(claimOnBehalfData), 1, "ClaimRewardsOnBehalf should be CLAIM (1)");
+        assertEq(parser.getOperationType(claimAllData), 1, "ClaimAllRewards should be CLAIM (1)");
+        assertEq(parser.getOperationType(claimAllOnBehalfData), 1, "ClaimAllOnBehalf should be CLAIM (1)");
 
         // Unknown
         assertEq(parser.getOperationType(unknownData), 0, "Unknown should return 0");

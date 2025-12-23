@@ -101,12 +101,12 @@ contract AaveV3Parser is ICalldataParser {
     /**
      * @notice Get the operation type for the given calldata
      * @param data The calldata to analyze
-     * @return opType 4=CLAIM for all supported operations
+     * @return opType
      */
     function getOperationType(bytes calldata data) external pure override returns (uint8 opType) {
         bytes4 selector = bytes4(data[:4]);
         if (_isClaimSelector(selector)) {
-            return 4; // CLAIM
+            return 1; // CLAIM
         }
         return 0; // UNKNOWN
     }

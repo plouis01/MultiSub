@@ -77,12 +77,12 @@ contract MerklParser is ICalldataParser {
     /**
      * @notice Get the operation type for the given calldata
      * @param data The calldata to analyze
-     * @return opType 1=SWAP, 2=DEPOSIT, 3=WITHDRAW, 4=CLAIM, 5=APPROVE
+     * @return opType
      */
     function getOperationType(bytes calldata data) external pure override returns (uint8 opType) {
         bytes4 selector = bytes4(data[:4]);
         if (selector == CLAIM_SELECTOR) {
-            return 4; // CLAIM
+            return 1; // CLAIM
         }
         return 0; // UNKNOWN
     }
