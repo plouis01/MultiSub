@@ -86,7 +86,7 @@ contract DeFiInteractorModuleTest is DeFiInteractorModuleBase {
 
     function test_RegisterSelector_RevertsForUnknown() public {
         bytes4 newSelector = bytes4(keccak256("newFunc()"));
-        vm.expectRevert(DeFiInteractorModule.CannotRegisterUnknown.selector);
+        vm.expectRevert(DeFiInteractorModule.CannotRegisterUnsupported.selector);
         module.registerSelector(newSelector, DeFiInteractorModule.OperationType.UNKNOWN);
     }
 

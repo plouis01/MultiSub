@@ -163,7 +163,6 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
      * @param opType The operation type classification (only CLAIM allowed)
      */
     function registerSelector(bytes4 selector, OperationType opType) external onlyOwner {
-        if (opType == OperationType.UNKNOWN) revert CannotRegisterUnknown();
         // Only allow CLAIM in claim-only version
         if (opType != OperationType.CLAIM) {
             revert CannotRegisterUnsupported();
