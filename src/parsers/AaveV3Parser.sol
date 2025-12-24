@@ -4,6 +4,15 @@ pragma solidity ^0.8.20;
 import {ICalldataParser} from "../interfaces/ICalldataParser.sol";
 
 /**
+ * @title IRewardsController
+ * @notice Interface for querying reward tokens from Aave V3 RewardsController
+ */
+interface IRewardsController {
+    /// @notice Returns the list of available reward token addresses for an asset
+    function getRewardsByAsset(address asset) external view returns (address[] memory);
+}
+
+/**
  * @title AaveV3Parser (Claim-Only Version)
  * @notice Calldata parser for Aave V3 RewardsController claim operations
  * @dev Only supports claim reward operations, no supply/withdraw/borrow
@@ -41,7 +50,7 @@ contract AaveV3Parser is ICalldataParser {
     }
 
     /// @inheritdoc ICalldataParser
-    function extractOutputTokens(address, bytes calldata data) external pure override returns (address[] memory tokens) {
+    function extractOutputTokens(address target, bytes calldata data) external view override returns (address[] memory tokens) {
         bytes4 selector = bytes4(data[:4]);
 
         if (selector == CLAIM_REWARDS_SELECTOR) {
@@ -60,12 +69,86 @@ contract AaveV3Parser is ICalldataParser {
             tokens = new address[](1);
             tokens[0] = token;
             return tokens;
-        } else if (selector == CLAIM_ALL_REWARDS_SELECTOR || selector == CLAIM_ALL_ON_BEHALF_SELECTOR) {
-            // claimAllRewards claims multiple reward tokens - unknown from calldata
-            // Returns empty array - balance changes tracked externally
-            return new address[](0);
+        } else if (selector == CLAIM_ALL_REWARDS_SELECTOR) {
+            // claimAllRewards(address[] assets, address to)
+            // Query reward tokens from the RewardsController for each asset
+            (address[] memory assets,) = abi.decode(data[4:], (address[], address));
+            return _getRewardTokensForAssets(target, assets);
+        } else if (selector == CLAIM_ALL_ON_BEHALF_SELECTOR) {
+            // claimAllRewardsOnBehalf(address[] assets, address user, address to)
+            // Query reward tokens from the RewardsController for each asset
+            (address[] memory assets,,) = abi.decode(data[4:], (address[], address, address));
+            return _getRewardTokensForAssets(target, assets);
         }
         revert UnsupportedSelector();
+    }
+
+    /**
+     * @notice Get all unique reward tokens for a list of assets
+     * @param rewardsController The RewardsController address
+     * @param assets The list of assets to query
+     * @return tokens Array of unique reward token addresses
+     */
+    function _getRewardTokensForAssets(address rewardsController, address[] memory assets) internal view returns (address[] memory tokens) {
+        // First pass: count total rewards (may include duplicates)
+        uint256 totalCount = 0;
+        uint256 assetsLen = assets.length;
+        for (uint256 i = 0; i < assetsLen; ) {
+            address[] memory assetRewards = IRewardsController(rewardsController).getRewardsByAsset(assets[i]);
+            totalCount += assetRewards.length;
+            unchecked { ++i; }
+        }
+
+        if (totalCount == 0) return new address[](0);
+
+        // Collect all rewards (with potential duplicates)
+        address[] memory allRewards = new address[](totalCount);
+        uint256 idx = 0;
+        for (uint256 i = 0; i < assetsLen; ) {
+            address[] memory assetRewards = IRewardsController(rewardsController).getRewardsByAsset(assets[i]);
+            uint256 rewardsLen = assetRewards.length;
+            for (uint256 j = 0; j < rewardsLen; ) {
+                allRewards[idx] = assetRewards[j];
+                unchecked { ++idx; ++j; }
+            }
+            unchecked { ++i; }
+        }
+
+        // Deduplicate: count unique tokens
+        uint256 uniqueCount = 0;
+        for (uint256 i = 0; i < totalCount; ) {
+            bool isDuplicate = false;
+            for (uint256 j = 0; j < i; ) {
+                if (allRewards[j] == allRewards[i]) {
+                    isDuplicate = true;
+                    break;
+                }
+                unchecked { ++j; }
+            }
+            if (!isDuplicate) {
+                unchecked { ++uniqueCount; }
+            }
+            unchecked { ++i; }
+        }
+
+        // Build unique array
+        tokens = new address[](uniqueCount);
+        uint256 uniqueIdx = 0;
+        for (uint256 i = 0; i < totalCount; ) {
+            bool isDuplicate = false;
+            for (uint256 j = 0; j < i; ) {
+                if (allRewards[j] == allRewards[i]) {
+                    isDuplicate = true;
+                    break;
+                }
+                unchecked { ++j; }
+            }
+            if (!isDuplicate) {
+                tokens[uniqueIdx] = allRewards[i];
+                unchecked { ++uniqueIdx; }
+            }
+            unchecked { ++i; }
+        }
     }
 
     /// @inheritdoc ICalldataParser

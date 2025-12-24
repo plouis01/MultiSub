@@ -5,11 +5,28 @@ import {Test} from "forge-std/Test.sol";
 import {AaveV3Parser} from "../src/parsers/AaveV3Parser.sol";
 
 /**
+ * @title MockRewardsController
+ * @notice Mock RewardsController for testing getRewardsByAsset
+ */
+contract MockRewardsController {
+    mapping(address => address[]) public assetRewards;
+
+    function setRewardsByAsset(address asset, address[] memory rewards) external {
+        assetRewards[asset] = rewards;
+    }
+
+    function getRewardsByAsset(address asset) external view returns (address[] memory) {
+        return assetRewards[asset];
+    }
+}
+
+/**
  * @title AaveV3ParserTest
  * @notice Tests for the Aave V3 RewardsController parser (Claim-Only Version)
  */
 contract AaveV3ParserTest is Test {
     AaveV3Parser public parser;
+    MockRewardsController public mockController;
 
     // Test addresses
     address constant REWARDS_CONTROLLER = 0x8164Cc65827dcFe994AB23944CBC90e0aa80bFcb;
@@ -17,9 +34,21 @@ contract AaveV3ParserTest is Test {
     address constant WETH = 0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2;
     address constant USER = address(0x1234);
     address constant REWARD_TOKEN = address(0xAAAA);
+    address constant REWARD_TOKEN_2 = address(0xBBBB);
 
     function setUp() public {
         parser = new AaveV3Parser();
+        mockController = new MockRewardsController();
+
+        // Set up reward tokens for test assets
+        address[] memory usdcRewards = new address[](1);
+        usdcRewards[0] = REWARD_TOKEN;
+        mockController.setRewardsByAsset(USDC, usdcRewards);
+
+        address[] memory wethRewards = new address[](2);
+        wethRewards[0] = REWARD_TOKEN;  // Same as USDC (duplicate)
+        wethRewards[1] = REWARD_TOKEN_2;
+        mockController.setRewardsByAsset(WETH, wethRewards);
     }
 
     // ============ Selector Tests ============
@@ -153,7 +182,7 @@ contract AaveV3ParserTest is Test {
         assertEq(recipient, recipientAddr, "Recipient should be the 'to' address");
     }
 
-    function testClaimAllRewardsReturnsEmptyArray() public view {
+    function testClaimAllRewardsReturnsRewardTokens() public view {
         // claimAllRewards(address[] assets, address to)
         address[] memory assets = new address[](2);
         assets[0] = USDC;
@@ -165,8 +194,11 @@ contract AaveV3ParserTest is Test {
             USER
         );
 
-        address[] memory tokens = parser.extractOutputTokens(REWARDS_CONTROLLER, data);
-        assertEq(tokens.length, 0, "ClaimAllRewards should return empty array (unknown tokens)");
+        // Should return unique reward tokens from all assets
+        address[] memory tokens = parser.extractOutputTokens(address(mockController), data);
+        assertEq(tokens.length, 2, "Should have 2 unique reward tokens");
+        assertEq(tokens[0], REWARD_TOKEN, "First token should be REWARD_TOKEN");
+        assertEq(tokens[1], REWARD_TOKEN_2, "Second token should be REWARD_TOKEN_2");
     }
 
     function testClaimAllRewardsExtractRecipient() public view {
@@ -183,7 +215,7 @@ contract AaveV3ParserTest is Test {
         assertEq(recipient, USER, "Recipient should be USER");
     }
 
-    function testClaimAllOnBehalfReturnsEmptyArray() public view {
+    function testClaimAllOnBehalfReturnsRewardTokens() public view {
         // claimAllRewardsOnBehalf(address[] assets, address user, address to)
         address[] memory assets = new address[](1);
         assets[0] = USDC;
@@ -195,8 +227,10 @@ contract AaveV3ParserTest is Test {
             USER
         );
 
-        address[] memory tokens = parser.extractOutputTokens(REWARDS_CONTROLLER, data);
-        assertEq(tokens.length, 0, "ClaimAllOnBehalf should return empty array");
+        // Should return reward tokens for USDC
+        address[] memory tokens = parser.extractOutputTokens(address(mockController), data);
+        assertEq(tokens.length, 1, "Should have 1 reward token");
+        assertEq(tokens[0], REWARD_TOKEN, "Token should be REWARD_TOKEN");
     }
 
     function testClaimAllOnBehalfExtractRecipient() public view {
