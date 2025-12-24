@@ -90,25 +90,27 @@ contract AaveV3Parser is ICalldataParser {
      * @return tokens Array of unique reward token addresses
      */
     function _getRewardTokensForAssets(address rewardsController, address[] memory assets) internal view returns (address[] memory tokens) {
-        // First pass: count total rewards (may include duplicates)
-        uint256 totalCount = 0;
         uint256 assetsLen = assets.length;
+        if (assetsLen == 0) return new address[](0);
+
+        // Cache all reward arrays to avoid duplicate external calls
+        address[][] memory cachedRewards = new address[][](assetsLen);
+        uint256 totalCount = 0;
         for (uint256 i = 0; i < assetsLen; ) {
-            address[] memory assetRewards = IRewardsController(rewardsController).getRewardsByAsset(assets[i]);
-            totalCount += assetRewards.length;
+            cachedRewards[i] = IRewardsController(rewardsController).getRewardsByAsset(assets[i]);
+            totalCount += cachedRewards[i].length;
             unchecked { ++i; }
         }
 
         if (totalCount == 0) return new address[](0);
 
-        // Collect all rewards (with potential duplicates)
+        // Collect all rewards from cache (with potential duplicates)
         address[] memory allRewards = new address[](totalCount);
         uint256 idx = 0;
         for (uint256 i = 0; i < assetsLen; ) {
-            address[] memory assetRewards = IRewardsController(rewardsController).getRewardsByAsset(assets[i]);
-            uint256 rewardsLen = assetRewards.length;
+            uint256 rewardsLen = cachedRewards[i].length;
             for (uint256 j = 0; j < rewardsLen; ) {
-                allRewards[idx] = assetRewards[j];
+                allRewards[idx] = cachedRewards[i][j];
                 unchecked { ++idx; ++j; }
             }
             unchecked { ++i; }

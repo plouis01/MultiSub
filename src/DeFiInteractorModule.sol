@@ -79,7 +79,6 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
     error TransactionFailed();
     error AddressNotAllowed();
     error NoParserRegistered(address target);
-    error CannotRegisterUnknown();
     error CannotRegisterUnsupported();
     error InvalidRecipient(address recipient, address expected);
     error CannotBeSubaccount(address account);

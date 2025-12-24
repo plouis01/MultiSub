@@ -61,9 +61,9 @@ interface ICalldataParser {
     /**
      * @notice Get the operation type for the given calldata
      * @param data The calldata to analyze
-     * @return opType The operation type: 1=SWAP, 2=DEPOSIT, 3=WITHDRAW, 4=CLAIM, 5=APPROVE
-     * @dev This allows parsers to determine operation type from calldata content,
-     *      which is essential for protocols with single entry points (e.g., Uniswap V4's modifyLiquidities)
+     * @return opType The operation type: 0=UNKNOWN, 1=CLAIM
+     * @dev This allows parsers to determine operation type from calldata content.
+     *      In the claim-only version, only CLAIM (1) operations are supported.
      */
     function getOperationType(bytes calldata data) external pure returns (uint8 opType);
 }
