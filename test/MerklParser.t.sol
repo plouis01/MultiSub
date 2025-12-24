@@ -210,6 +210,103 @@ contract MerklParserTest is Test {
         assertEq(outputTokens.length, 0, "Should return empty array for empty tokens");
     }
 
+    function testExtractRecipientSingleUser() public view {
+        bytes memory data = _buildClaimCalldata();
+        address recipient = parser.extractRecipient(MERKL_DISTRIBUTOR, data, address(0));
+        assertEq(recipient, USER, "Recipient should be USER");
+    }
+
+    function testExtractRecipientMultipleSameUsers() public view {
+        // All users are the same - should pass
+        address[] memory users = new address[](3);
+        users[0] = USER;
+        users[1] = USER;
+        users[2] = USER;
+
+        address[] memory tokens = new address[](3);
+        tokens[0] = TOKEN_A;
+        tokens[1] = TOKEN_B;
+        tokens[2] = TOKEN_A;
+
+        uint256[] memory amounts = new uint256[](3);
+        amounts[0] = 100e18;
+        amounts[1] = 200e18;
+        amounts[2] = 300e18;
+
+        bytes32[][] memory proofs = new bytes32[][](3);
+        for (uint256 i = 0; i < 3; i++) {
+            proofs[i] = new bytes32[](1);
+            proofs[i][0] = keccak256(abi.encode("proof", i));
+        }
+
+        bytes memory data = abi.encodeWithSelector(
+            parser.CLAIM_SELECTOR(),
+            users,
+            tokens,
+            amounts,
+            proofs
+        );
+
+        address recipient = parser.extractRecipient(MERKL_DISTRIBUTOR, data, address(0));
+        assertEq(recipient, USER, "Recipient should be USER");
+    }
+
+    function testExtractRecipientRevertsForMixedUsers() public {
+        // Mixed users - should revert to prevent fund theft
+        address attacker = address(0xDEAD);
+        address[] memory users = new address[](3);
+        users[0] = USER;     // First user is Safe
+        users[1] = attacker; // Second user is attacker - THEFT!
+        users[2] = USER;
+
+        address[] memory tokens = new address[](3);
+        tokens[0] = TOKEN_A;
+        tokens[1] = TOKEN_B;
+        tokens[2] = TOKEN_A;
+
+        uint256[] memory amounts = new uint256[](3);
+        amounts[0] = 100e18;
+        amounts[1] = 200e18;
+        amounts[2] = 300e18;
+
+        bytes32[][] memory proofs = new bytes32[][](3);
+        for (uint256 i = 0; i < 3; i++) {
+            proofs[i] = new bytes32[](1);
+            proofs[i][0] = keccak256(abi.encode("proof", i));
+        }
+
+        bytes memory data = abi.encodeWithSelector(
+            parser.CLAIM_SELECTOR(),
+            users,
+            tokens,
+            amounts,
+            proofs
+        );
+
+        // Should revert because not all users match
+        vm.expectRevert(MerklParser.UnsupportedSelector.selector);
+        parser.extractRecipient(MERKL_DISTRIBUTOR, data, address(0));
+    }
+
+    function testExtractRecipientRevertsForEmptyUsers() public {
+        address[] memory users = new address[](0);
+        address[] memory tokens = new address[](0);
+        uint256[] memory amounts = new uint256[](0);
+        bytes32[][] memory proofs = new bytes32[][](0);
+
+        bytes memory data = abi.encodeWithSelector(
+            parser.CLAIM_SELECTOR(),
+            users,
+            tokens,
+            amounts,
+            proofs
+        );
+
+        // Should revert for empty users array
+        vm.expectRevert(MerklParser.UnsupportedSelector.selector);
+        parser.extractRecipient(MERKL_DISTRIBUTOR, data, address(0));
+    }
+
     // Helper function to build standard claim calldata
     function _buildClaimCalldata() internal pure returns (bytes memory) {
         address[] memory users = new address[](1);
