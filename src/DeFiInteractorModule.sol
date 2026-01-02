@@ -133,12 +133,13 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
     function _removeFromSubaccountArray(uint16 roleId, address member) internal {
         address[] storage accounts = subaccounts[roleId];
         uint256 length = accounts.length;
-        for (uint256 i = 0; i < length; i++) {
+        for (uint256 i = 0; i < length; ) {
             if (accounts[i] == member) {
                 accounts[i] = accounts[length - 1];
                 accounts.pop();
                 break;
             }
+            unchecked { ++i; }
         }
     }
 
