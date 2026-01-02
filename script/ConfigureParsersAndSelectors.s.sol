@@ -83,21 +83,22 @@ contract ConfigureParsersAndSelectors is Script, SafeTxHelper {
         console.log("Merkl Distributor -> MerklParser");
 
         // ============ Register Selectors via Safe (CLAIM only) ============
-        console.log("\n--- Registering Selectors (CLAIM=4) ---");
+        // In claim-only version: UNKNOWN=0, CLAIM=1
+        console.log("\n--- Registering Selectors (CLAIM=1) ---");
 
         // Aave V3 Rewards - CLAIM
-        _executeSafeTx(safe, module, abi.encodeWithSignature("registerSelector(bytes4,uint8)", AAVE_CLAIM_REWARDS, uint8(4)), deployerPrivateKey);
-        _executeSafeTx(safe, module, abi.encodeWithSignature("registerSelector(bytes4,uint8)", AAVE_CLAIM_REWARDS_ON_BEHALF, uint8(4)), deployerPrivateKey);
-        _executeSafeTx(safe, module, abi.encodeWithSignature("registerSelector(bytes4,uint8)", AAVE_CLAIM_ALL_REWARDS, uint8(4)), deployerPrivateKey);
-        _executeSafeTx(safe, module, abi.encodeWithSignature("registerSelector(bytes4,uint8)", AAVE_CLAIM_ALL_ON_BEHALF, uint8(4)), deployerPrivateKey);
+        _executeSafeTx(safe, module, abi.encodeWithSignature("registerSelector(bytes4,uint8)", AAVE_CLAIM_REWARDS, uint8(1)), deployerPrivateKey);
+        _executeSafeTx(safe, module, abi.encodeWithSignature("registerSelector(bytes4,uint8)", AAVE_CLAIM_REWARDS_ON_BEHALF, uint8(1)), deployerPrivateKey);
+        _executeSafeTx(safe, module, abi.encodeWithSignature("registerSelector(bytes4,uint8)", AAVE_CLAIM_ALL_REWARDS, uint8(1)), deployerPrivateKey);
+        _executeSafeTx(safe, module, abi.encodeWithSignature("registerSelector(bytes4,uint8)", AAVE_CLAIM_ALL_ON_BEHALF, uint8(1)), deployerPrivateKey);
         console.log("Aave claim* -> CLAIM");
 
         // NonfungiblePositionManager - CLAIM
-        _executeSafeTx(safe, module, abi.encodeWithSignature("registerSelector(bytes4,uint8)", NPM_COLLECT, uint8(4)), deployerPrivateKey);
+        _executeSafeTx(safe, module, abi.encodeWithSignature("registerSelector(bytes4,uint8)", NPM_COLLECT, uint8(1)), deployerPrivateKey);
         console.log("NPM collect -> CLAIM");
 
         // Merkl - CLAIM
-        _executeSafeTx(safe, module, abi.encodeWithSignature("registerSelector(bytes4,uint8)", MERKL_CLAIM, uint8(4)), deployerPrivateKey);
+        _executeSafeTx(safe, module, abi.encodeWithSignature("registerSelector(bytes4,uint8)", MERKL_CLAIM, uint8(1)), deployerPrivateKey);
         console.log("Merkl claim -> CLAIM");
 
         vm.stopBroadcast();
