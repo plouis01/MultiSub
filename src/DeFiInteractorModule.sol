@@ -223,16 +223,16 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
         address target,
         bytes calldata data
     ) external nonReentrant whenNotPaused returns (bytes memory) {
-        // 1. Validate permissions
+        // Validate permissions
         if (!hasRole(msg.sender, CLAIM_ROLE)) revert Unauthorized();
 
-        // 2. Validate target is whitelisted
+        // Validate target is whitelisted
         if (!allowedAddresses[msg.sender][target]) revert AddressNotAllowed();
 
-        // 3. Classify operation
+        // Classify operation
         OperationType opType = _classifyOperation(target, data);
 
-        // 4. Only allow CLAIM
+        // Only allow CLAIM
         if (opType == OperationType.UNKNOWN) {
             revert UnknownSelector(bytes4(data[:4]));
         }
@@ -240,7 +240,7 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
             revert UnsupportedOperation(opType);
         }
 
-        // 5. Execute the claim
+        // Execute the claim
         return _executeClaim(msg.sender, target, data, opType);
     }
 
@@ -276,19 +276,19 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
         bytes calldata data,
         OperationType opType
     ) internal returns (bytes memory) {
-        // 1. Parser is required to track output tokens and validate recipient
+        // Parser is required to track output tokens and validate recipient
         ICalldataParser parser = protocolParsers[target];
         if (address(parser) == address(0)) {
             revert NoParserRegistered(target);
         }
 
-        // 2. Validate recipient is the Safe to prevent fund theft
+        // Validate recipient is the Safe to prevent fund theft
         address recipient = parser.extractRecipient(target, data, avatar);
         if (recipient != avatar) {
             revert InvalidRecipient(recipient, avatar);
         }
 
-        // 3. Get output tokens from parser
+        // Get output tokens from parser
         address[] memory tokensOut = parser.extractOutputTokens(target, data);
         uint256[] memory balancesBefore = new uint256[](tokensOut.length);
         uint256 len = tokensOut.length;
@@ -299,11 +299,11 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
             unchecked { ++i; }
         }
 
-        // 4. Execute
+        // Execute
         bool success = exec(target, 0, data, ISafe.Operation.Call);
         if (!success) revert TransactionFailed();
 
-        // 5. Calculate received amounts
+        // Calculate received amounts
         uint256[] memory amountsOut = new uint256[](tokensOut.length);
         for (uint256 i = 0; i < len; ) {
             if (tokensOut[i] != address(0)) {
@@ -313,7 +313,7 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
             unchecked { ++i; }
         }
 
-        // 6. Emit event
+        // Emit event
         emit ProtocolExecution(
             subAccount,
             target,
