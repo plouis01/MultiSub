@@ -86,6 +86,8 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
     error CannotBeSubaccount(address account);
     error CannotWhitelistCoreAddress(address account);
     error CannotRegisterParserForCoreAddress(address account);
+    error InvalidSelector();
+    error InvalidCalldata();
 
     // ============ Constructor ============
 
@@ -186,6 +188,7 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
      * @param opType The operation type classification (only CLAIM allowed)
      */
     function registerSelector(bytes4 selector, OperationType opType) external onlyOwner {
+        if (selector == bytes4(0)) revert InvalidSelector();
         // Only allow CLAIM in claim-only version
         if (opType != OperationType.CLAIM) {
             revert CannotRegisterUnsupported();
@@ -206,9 +209,10 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
     /**
      * @notice Register a parser for a protocol
      * @param protocol The protocol address
-     * @param parser The parser contract address
+     * @param parser The parser contract address (use address(0) to unregister)
      */
     function registerParser(address protocol, address parser) external onlyOwner {
+        if (protocol == address(0)) revert InvalidAddress();
         // Prevent registering parser for Safe or Module
         if (protocol == avatar || protocol == address(this)) revert CannotRegisterParserForCoreAddress(protocol);
         protocolParsers[protocol] = ICalldataParser(parser);
@@ -245,13 +249,16 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
     /**
      * @notice Execute a claim operation on a protocol
      * @param target The protocol address to call
-     * @param data The calldata to execute
+     * @param data The calldata to execute (must be at least 4 bytes)
      * @dev Only CLAIM operations are supported
      */
     function executeOnProtocol(
         address target,
         bytes calldata data
     ) external nonReentrant whenNotPaused returns (bytes memory) {
+        // Validate calldata has at least a selector
+        if (data.length < 4) revert InvalidCalldata();
+
         // Validate permissions
         if (!hasRole(msg.sender, CLAIM_ROLE)) revert Unauthorized();
 
