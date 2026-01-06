@@ -68,7 +68,7 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
 
     event SelectorRegistered(bytes4 indexed selector, OperationType opType);
     event SelectorUnregistered(bytes4 indexed selector);
-    event ParserRegistered(address indexed protocol, address parser);
+    event ParserRegistered(address indexed protocol, address indexed parser);
 
     event EmergencyPaused(address indexed by);
     event EmergencyUnpaused(address indexed by);
