@@ -192,16 +192,10 @@ contract DeFiInteractorModuleTest is DeFiInteractorModuleBase {
 
         // Expect event
         vm.expectEmit(true, true, false, false);
-        address[] memory tokensOut = new address[](1);
-        tokensOut[0] = address(token);
-        uint256[] memory amountsOut = new uint256[](1);
-        amountsOut[0] = 0;
         emit DeFiInteractorModule.ProtocolExecution(
             subAccount1,
             address(protocol),
-            DeFiInteractorModule.OperationType.CLAIM,
-            tokensOut,
-            amountsOut
+            DeFiInteractorModule.OperationType.CLAIM
         );
 
         vm.prank(subAccount1);

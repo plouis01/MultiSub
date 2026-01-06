@@ -60,9 +60,7 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
     event ProtocolExecution(
         address indexed subAccount,
         address indexed target,
-        OperationType opType,
-        address[] tokensOut,
-        uint256[] amountsOut
+        OperationType opType
     );
 
     event SelectorRegistered(bytes4 indexed selector, OperationType opType);
@@ -77,6 +75,7 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
     error UnknownSelector(bytes4 selector);
     error UnsupportedOperation(OperationType opType);
     error TransactionFailed();
+    error TokenLost();
     error AddressNotAllowed();
     error NoParserRegistered(address target);
     error CannotRegisterUnsupported();
@@ -304,11 +303,10 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
         if (!success) revert TransactionFailed();
 
         // Calculate received amounts
-        uint256[] memory amountsOut = new uint256[](tokensOut.length);
         for (uint256 i = 0; i < len; ) {
             if (tokensOut[i] != address(0)) {
                 uint256 balanceAfter = _getTokenBalance(tokensOut[i]);
-                amountsOut[i] = balanceAfter >= balancesBefore[i] ? balanceAfter - balancesBefore[i] : 0;
+                if (balanceAfter < balancesBefore[i]) revert TokenLost();
             }
             unchecked { ++i; }
         }
@@ -317,9 +315,7 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
         emit ProtocolExecution(
             subAccount,
             target,
-            opType,
-            tokensOut,
-            amountsOut
+            opType
         );
 
         return "";
