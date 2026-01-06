@@ -3,7 +3,6 @@ pragma solidity ^0.8.20;
 
 import {Test} from "forge-std/Test.sol";
 import {DeFiInteractorModule} from "../../src/DeFiInteractorModule.sol";
-import {Module} from "../../src/base/Module.sol";
 import {MockSafe} from "../mocks/MockSafe.sol";
 import {MockERC20} from "../mocks/MockERC20.sol";
 import {MockProtocol} from "../mocks/MockProtocol.sol";

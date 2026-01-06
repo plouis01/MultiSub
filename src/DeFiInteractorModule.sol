@@ -20,6 +20,9 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
     /// @notice Role ID for claim execution
     uint16 public constant CLAIM_ROLE = 1;
 
+    /// @notice ERC20 balanceOf selector
+    bytes4 private constant BALANCE_OF_SELECTOR = 0x70a08231;
+
     // ============ Operation Type Classification ============
 
     /// @notice Operation types for selector-based classification
@@ -92,7 +95,7 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
      * @param _owner The owner address (typically the Safe itself)
      */
     constructor(address _avatar, address _owner)
-        Module(_avatar, _avatar, _owner)
+        Module(_avatar, _owner)
     {}
 
     // ============ Emergency Controls ============
@@ -228,8 +231,11 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
         // Validate target is whitelisted
         if (!allowedAddresses[msg.sender][target]) revert AddressNotAllowed();
 
+        // Cache parser to avoid double SLOAD
+        ICalldataParser parser = protocolParsers[target];
+
         // Classify operation
-        OperationType opType = _classifyOperation(target, data);
+        OperationType opType = _classifyOperation(parser, data);
 
         // Only allow CLAIM
         if (opType == OperationType.UNKNOWN) {
@@ -240,20 +246,18 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
         }
 
         // Execute the claim
-        return _executeClaim(msg.sender, target, data, opType);
+        return _executeClaim(msg.sender, target, data, opType, parser);
     }
 
     // ============ Operation Classification ============
 
     /**
      * @notice Classify the operation type from calldata
-     * @param target The protocol address being called
+     * @param parser The parser for the protocol (can be zero address)
      * @param data The calldata to analyze
      * @return opType The operation type
      */
-    function _classifyOperation(address target, bytes calldata data) internal view returns (OperationType) {
-        ICalldataParser parser = protocolParsers[target];
-
+    function _classifyOperation(ICalldataParser parser, bytes calldata data) internal view returns (OperationType) {
         // If parser exists, use it for classification
         if (address(parser) != address(0)) {
             uint8 parserOpType = parser.getOperationType(data);
@@ -273,10 +277,10 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
         address subAccount,
         address target,
         bytes calldata data,
-        OperationType opType
+        OperationType opType,
+        ICalldataParser parser
     ) internal returns (bytes memory) {
         // Parser is required to track output tokens and validate recipient
-        ICalldataParser parser = protocolParsers[target];
         if (address(parser) == address(0)) {
             revert NoParserRegistered(target);
         }
@@ -324,11 +328,11 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
     // ============ Internal Helpers ============
 
     function _getTokenBalance(address token) internal view returns (uint256) {
-        (bool success, bytes memory data) = token.staticcall(
-            abi.encodeWithSignature("balanceOf(address)", avatar)
+        (bool success, bytes memory returnData) = token.staticcall(
+            abi.encodeWithSelector(BALANCE_OF_SELECTOR, avatar)
         );
-        if (success && data.length >= 32) {
-            return abi.decode(data, (uint256));
+        if (success && returnData.length >= 32) {
+            return abi.decode(returnData, (uint256));
         }
         return 0;
     }

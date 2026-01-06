@@ -88,6 +88,7 @@ contract AaveV3Parser is ICalldataParser {
      * @param rewardsController The RewardsController address
      * @param assets The list of assets to query
      * @return tokens Array of unique reward token addresses
+     * @dev Uses single-pass deduplication for gas efficiency
      */
     function _getRewardTokensForAssets(address rewardsController, address[] memory assets) internal view returns (address[] memory tokens) {
         uint256 assetsLen = assets.length;
@@ -104,52 +105,39 @@ contract AaveV3Parser is ICalldataParser {
 
         if (totalCount == 0) return new address[](0);
 
-        // Collect all rewards from cache (with potential duplicates)
-        address[] memory allRewards = new address[](totalCount);
-        uint256 idx = 0;
-        for (uint256 i = 0; i < assetsLen; ) {
-            uint256 rewardsLen = cachedRewards[i].length;
-            for (uint256 j = 0; j < rewardsLen; ) {
-                allRewards[idx] = cachedRewards[i][j];
-                unchecked { ++idx; ++j; }
-            }
-            unchecked { ++i; }
-        }
-
-        // Deduplicate: count unique tokens
-        uint256 uniqueCount = 0;
-        for (uint256 i = 0; i < totalCount; ) {
-            bool isDuplicate = false;
-            for (uint256 j = 0; j < i; ) {
-                if (allRewards[j] == allRewards[i]) {
-                    isDuplicate = true;
-                    break;
-                }
-                unchecked { ++j; }
-            }
-            if (!isDuplicate) {
-                unchecked { ++uniqueCount; }
-            }
-            unchecked { ++i; }
-        }
-
-        // Build unique array
-        tokens = new address[](uniqueCount);
+        // Single-pass deduplication: collect unique tokens directly
+        tokens = new address[](totalCount);
         uint256 uniqueIdx = 0;
-        for (uint256 i = 0; i < totalCount; ) {
-            bool isDuplicate = false;
-            for (uint256 j = 0; j < i; ) {
-                if (allRewards[j] == allRewards[i]) {
-                    isDuplicate = true;
-                    break;
+
+        for (uint256 i = 0; i < assetsLen; ) {
+            address[] memory rewards = cachedRewards[i];
+            uint256 rewardsLen = rewards.length;
+
+            for (uint256 j = 0; j < rewardsLen; ) {
+                address reward = rewards[j];
+                bool isDuplicate = false;
+
+                // Only check against already-added unique tokens
+                for (uint256 k = 0; k < uniqueIdx; ) {
+                    if (tokens[k] == reward) {
+                        isDuplicate = true;
+                        break;
+                    }
+                    unchecked { ++k; }
+                }
+
+                if (!isDuplicate) {
+                    tokens[uniqueIdx] = reward;
+                    unchecked { ++uniqueIdx; }
                 }
                 unchecked { ++j; }
             }
-            if (!isDuplicate) {
-                tokens[uniqueIdx] = allRewards[i];
-                unchecked { ++uniqueIdx; }
-            }
             unchecked { ++i; }
+        }
+
+        // Resize array to actual unique count
+        assembly {
+            mstore(tokens, uniqueIdx)
         }
     }
 

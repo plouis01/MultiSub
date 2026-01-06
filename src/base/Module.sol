@@ -10,17 +10,13 @@ import {ISafe} from "../interfaces/ISafe.sol";
  */
 abstract contract Module {
     /// @notice Address of the Safe (avatar) that this module interacts with
-    address public avatar;
-
-    /// @notice Address where transactions are sent (usually the Safe itself)
-    address public target;
+    address public immutable avatar;
 
     /// @notice Owner address that can configure the module
-    address public owner;
+    address public immutable owner;
 
-    event AvatarSet(address indexed previousAvatar, address indexed newAvatar);
-    event TargetSet(address indexed previousTarget, address indexed newTarget);
-    event OwnershipTransferred(address indexed previousOwner, address indexed newOwner);
+    event AvatarSet(address indexed avatar);
+    event OwnershipSet(address indexed owner);
 
     error Unauthorized();
     error InvalidAddress();
@@ -34,53 +30,17 @@ abstract contract Module {
     /**
      * @notice Initialize the module
      * @param _avatar The Safe address (avatar)
-     * @param _target The target address (usually same as avatar)
      * @param _owner The owner address
      */
-    constructor(address _avatar, address _target, address _owner) {
-        if (_avatar == address(0) || _target == address(0) || _owner == address(0)) {
+    constructor(address _avatar, address _owner) {
+        if (_avatar == address(0) || _owner == address(0)) {
             revert InvalidAddress();
         }
         avatar = _avatar;
-        target = _target;
         owner = _owner;
 
-        emit AvatarSet(address(0), _avatar);
-        emit TargetSet(address(0), _target);
-        emit OwnershipTransferred(address(0), _owner);
-    }
-
-    /**
-     * @notice Set the avatar address
-     * @param _avatar The new avatar address
-     */
-    function setAvatar(address _avatar) public onlyOwner {
-        if (_avatar == address(0)) revert InvalidAddress();
-        address previousAvatar = avatar;
-        avatar = _avatar;
-        emit AvatarSet(previousAvatar, _avatar);
-    }
-
-    /**
-     * @notice Set the target address
-     * @param _target The new target address
-     */
-    function setTarget(address _target) public onlyOwner {
-        if (_target == address(0)) revert InvalidAddress();
-        address previousTarget = target;
-        target = _target;
-        emit TargetSet(previousTarget, _target);
-    }
-
-    /**
-     * @notice Transfer ownership of the module
-     * @param _newOwner The new owner address
-     */
-    function transferOwnership(address _newOwner) public onlyOwner {
-        if (_newOwner == address(0)) revert InvalidAddress();
-        address previousOwner = owner;
-        owner = _newOwner;
-        emit OwnershipTransferred(previousOwner, _newOwner);
+        emit AvatarSet(_avatar);
+        emit OwnershipSet(_owner);
     }
 
     /**
@@ -97,7 +57,7 @@ abstract contract Module {
         bytes memory data,
         ISafe.Operation operation
     ) internal returns (bool success) {
-        return ISafe(target).execTransactionFromModule(to, value, data, operation);
+        return ISafe(avatar).execTransactionFromModule(to, value, data, operation);
     }
 
 }
