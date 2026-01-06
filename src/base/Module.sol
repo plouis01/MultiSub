@@ -53,7 +53,7 @@ abstract contract Module {
     function exec(
         address to,
         uint256 value,
-        bytes memory data,
+        bytes calldata data,
         ISafe.Operation operation
     ) internal returns (bool success) {
         return ISafe(avatar).execTransactionFromModule(to, value, data, operation);
