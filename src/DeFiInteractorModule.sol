@@ -150,30 +150,6 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
         }
     }
 
-    /// @dev Removes a member from the subaccounts array using swap-and-pop
-    function _removeFromSubaccountArray(uint16 roleId, address member) internal {
-        address[] storage accounts = subaccounts[roleId];
-        uint256 length = accounts.length;
-        for (uint256 i = 0; i < length; ) {
-            if (accounts[i] == member) {
-                accounts[i] = accounts[length - 1];
-                accounts.pop();
-                break;
-            }
-            unchecked { ++i; }
-        }
-    }
-
-    /**
-     * @notice Check if an address has a specific role
-     * @param member The address to check
-     * @param roleId The role identifier to check for
-     * @return True if the member has the role
-     */
-    function hasRole(address member, uint16 roleId) public view returns (bool) {
-        return subAccountRoles[member][roleId];
-    }
-
     /**
      * @notice Get all subaccounts with a specific role
      * @param roleId The role identifier to query
@@ -190,6 +166,16 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
      */
     function getSubaccountCount(uint16 roleId) external view returns (uint256) {
         return subaccounts[roleId].length;
+    }
+
+    /**
+     * @notice Check if an address has a specific role
+     * @param member The address to check
+     * @param roleId The role identifier to check for
+     * @return True if the member has the role
+     */
+    function hasRole(address member, uint16 roleId) public view returns (bool) {
+        return subAccountRoles[member][roleId];
     }
 
     // ============ Selector Registry ============
@@ -368,6 +354,21 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
 
     // ============ Internal Helpers ============
 
+    /// @dev Removes a member from the subaccounts array using swap-and-pop
+    function _removeFromSubaccountArray(uint16 roleId, address member) internal {
+        address[] storage accounts = subaccounts[roleId];
+        uint256 length = accounts.length;
+        for (uint256 i = 0; i < length; ) {
+            if (accounts[i] == member) {
+                accounts[i] = accounts[length - 1];
+                accounts.pop();
+                break;
+            }
+            unchecked { ++i; }
+        }
+    }
+
+    /// @dev Gets the token balance of the avatar (Safe)
     function _getTokenBalance(address token) internal view returns (uint256) {
         (bool success, bytes memory returnData) = token.staticcall(
             abi.encodeWithSelector(BALANCE_OF_SELECTOR, avatar)
