@@ -20,7 +20,6 @@ abstract contract Module {
 
     error Unauthorized();
     error InvalidAddress();
-    error ModuleTransactionFailed();
 
     modifier onlyOwner() {
         if (msg.sender != owner) revert Unauthorized();
