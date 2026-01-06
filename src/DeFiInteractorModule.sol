@@ -155,18 +155,18 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
     /**
      * @notice Get all subaccounts with a specific role
      * @param roleId The role identifier to query
-     * @return Array of addresses with the specified role
+     * @return members Array of addresses with the specified role
      */
-    function getSubaccountsByRole(uint16 roleId) external view returns (address[] memory) {
+    function getSubaccountsByRole(uint16 roleId) external view returns (address[] memory members) {
         return subaccounts[roleId];
     }
 
     /**
      * @notice Get the count of subaccounts with a specific role
      * @param roleId The role identifier to query
-     * @return Number of subaccounts with the specified role
+     * @return count Number of subaccounts with the specified role
      */
-    function getSubaccountCount(uint16 roleId) external view returns (uint256) {
+    function getSubaccountCount(uint16 roleId) external view returns (uint256 count) {
         return subaccounts[roleId].length;
     }
 
@@ -174,9 +174,9 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
      * @notice Check if an address has a specific role
      * @param member The address to check
      * @param roleId The role identifier to check for
-     * @return True if the member has the role
+     * @return hasPermission True if the member has the role
      */
-    function hasRole(address member, uint16 roleId) public view returns (bool) {
+    function hasRole(address member, uint16 roleId) public view returns (bool hasPermission) {
         return subAccountRoles[member][roleId];
     }
 
@@ -376,7 +376,7 @@ contract DeFiInteractorModule is Module, ReentrancyGuard, Pausable {
     }
 
     /// @dev Gets the token balance of the avatar (Safe)
-    function _getTokenBalance(address token) internal view returns (uint256) {
+    function _getTokenBalance(address token) internal view returns (uint256 balance) {
         (bool success, bytes memory returnData) = token.staticcall(
             abi.encodeWithSelector(BALANCE_OF_SELECTOR, avatar)
         );
