@@ -57,14 +57,20 @@ contract MerklParser is ICalldataParser {
 
         if (selector == CLAIM_SELECTOR) {
             // claim(address[] users, address[] tokens, uint256[] amounts, bytes32[][] proofs)
-            // In Merkl, the 'users' array contains the recipients of the rewards
-            // Return the first user as the recipient
+            // In Merkl, each user in the array receives their corresponding reward
+            // all users must be the Safe to prevent fund theft
             (address[] memory users,,,) = abi.decode(data[4:], (address[], address[], uint256[], bytes32[][]));
 
-            if (users.length > 0) {
-                return users[0];
+            if (users.length == 0) revert UnsupportedSelector();
+
+            recipient = users[0];
+            // Validate all users are the same (the Safe)
+            uint256 len = users.length;
+            for (uint256 i = 1; i < len; ) {
+                if (users[i] != recipient) revert UnsupportedSelector();
+                unchecked { ++i; }
             }
-            revert UnsupportedSelector();
+            return recipient;
         }
         revert UnsupportedSelector();
     }
@@ -77,12 +83,12 @@ contract MerklParser is ICalldataParser {
     /**
      * @notice Get the operation type for the given calldata
      * @param data The calldata to analyze
-     * @return opType 1=SWAP, 2=DEPOSIT, 3=WITHDRAW, 4=CLAIM, 5=APPROVE
+     * @return opType
      */
     function getOperationType(bytes calldata data) external pure override returns (uint8 opType) {
         bytes4 selector = bytes4(data[:4]);
         if (selector == CLAIM_SELECTOR) {
-            return 4; // CLAIM
+            return 1; // CLAIM
         }
         return 0; // UNKNOWN
     }
